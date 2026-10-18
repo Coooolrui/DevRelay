@@ -190,6 +190,7 @@
         ['.*', '全部 HTTP 方法（含扩展方法）'],
       ];
       const corsMethods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD', 'CONNECT', 'TRACE'];
+      const corsHeaders = ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'Cache-Control', 'Pragma', 'X-CSRF-Token', 'X-Token'];
 
       function replaceWithSelect(id, options, multiple = false) {
         const input = $(id);
@@ -207,7 +208,9 @@
 
       const matchMethod = replaceWithSelect('mainMatchMethod', methodOptions);
       const corsMethod = replaceWithSelect('mainCorsMethods', corsMethods.map((method) => [method, method]), true);
+      const corsHeader = replaceWithSelect('mainCorsHeaders', corsHeaders.map((header) => [header, header]), true);
       if (corsMethod) corsMethod.title = '可多选允许的方法';
+      if (corsHeader) corsHeader.title = '可多选允许的请求头';
 
       function selectMatchMethod(value) {
         if (!matchMethod) return;
@@ -227,17 +230,30 @@
         return corsMethod ? [...corsMethod.selectedOptions].map((option) => option.value).join(', ') : '';
       }
 
+      function selectCorsHeaders(value) {
+        if (!corsHeader) return;
+        const values = String(value || '').split(',').map((item) => item.trim()).filter(Boolean);
+        values.filter((item) => ![...corsHeader.options].some((option) => option.value === item)).forEach((item) => corsHeader.add(new Option(`自定义：${item}`, item)));
+        [...corsHeader.options].forEach((option) => { option.selected = values.includes(option.value); });
+      }
+
+      function readCorsHeaders() {
+        return corsHeader ? [...corsHeader.selectedOptions].map((option) => option.value).join(', ') : '';
+      }
+
       const originalFillMainRule = fillMainRule;
       fillMainRule = function(rule) {
         originalFillMainRule(rule);
         selectMatchMethod((rule.match || {}).method || '');
         selectCorsMethods((rule.cors || {}).allowMethods || 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+        selectCorsHeaders((rule.cors || {}).allowHeaders || 'Content-Type, Authorization, X-Requested-With');
       };
 
       const originalMainRuleFromForm = mainRuleFromForm;
       mainRuleFromForm = function() {
         const rule = originalMainRuleFromForm();
         if (corsMethod && rule.cors && rule.cors.enabled) rule.cors.allowMethods = readCorsMethods();
+        if (corsHeader && rule.cors && rule.cors.enabled) rule.cors.allowHeaders = readCorsHeaders();
         return rule;
       };
     })();
