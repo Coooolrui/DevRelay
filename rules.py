@@ -117,6 +117,47 @@ def find_rule(
     return None
 
 
+def capture_rule_values(
+    rule: Mapping[str, Any],
+    *,
+    host: str,
+    path: str,
+    method: str,
+    headers: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    """Return named Python regex groups captured while matching a rule."""
+    match = rule.get("match", {})
+    if not isinstance(match, Mapping):
+        return {}
+
+    captures: dict[str, str] = {}
+    checks = {
+        "host": host,
+        "path": path,
+        "method": method,
+    }
+    for field_name, value in checks.items():
+        pattern = _compile(match.get(field_name), f"match.{field_name}")
+        if pattern is None:
+            continue
+        matched = pattern.search(value)
+        if matched:
+            captures.update({name: group for name, group in matched.groupdict().items() if group is not None})
+
+    header_patterns = match.get("headers", {})
+    if isinstance(header_patterns, Mapping):
+        normalized = {str(key).lower(): str(value) for key, value in (headers or {}).items()}
+        for name, pattern_text in header_patterns.items():
+            value = normalized.get(str(name).lower())
+            pattern = _compile(pattern_text, f"match.headers.{name}")
+            if value is None or pattern is None:
+                continue
+            matched = pattern.search(value)
+            if matched:
+                captures.update({key: group for key, group in matched.groupdict().items() if group is not None})
+    return captures
+
+
 def parse_target(rule: Mapping[str, Any]) -> tuple[str, str, int]:
     target = rule.get("target")
     if isinstance(target, str):

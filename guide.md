@@ -56,6 +56,8 @@ uv run python devrelay_agent.py
 uv run python devrelay_agent.py --no-open
 ```
 
+主界面的“代理配置”区域管理 `configs/` 下的 YAML 文件。可以新建、编辑、重命名、删除、复制和导入文件；勾选文件并调整顺序后点击“保存选择”，启动代理时这些文件会按顺序合并。未选择任何文件时，代理不会启动。
+
 终端里的 Agent 进程结束后，代理子进程会被停止；关闭管理页面本身不会停止代理。
 
 ### 3.3 首次初始化向导
@@ -86,7 +88,7 @@ cd proxy
 uv run mitmdump \
   -p 8080 \
   -s devrelay_proxy.py \
-  --set devrelay_config=proxy_config.yml
+  --set 'devrelay_configs=["configs/default.yml"]'
 ```
 
 看到下面的日志后保持终端运行：
@@ -131,7 +133,7 @@ Edge 将 `--browser chrome` 换成 `--browser edge`。
 
 ## 4. 当前示例映射
 
-当前 [proxy_config.yml](./proxy_config.yml) 将：
+当前 [configs/default.yml](./configs/default.yml) 将：
 
 ```text
 https://api.apifox.com/api/v1/project-categories
@@ -147,7 +149,7 @@ http://localhost:7890/v1/project-categories
 
 ## 5. 配置文件结构
 
-配置文件是 YAML，根对象必须包含 `rules` 数组。规则按顺序匹配，第一条命中的规则生效。管理页面的高级编辑器和表单都会保存为 YAML。
+配置文件是 YAML，放在 `configs/` 目录中，根对象必须包含 `rules` 数组。管理页面可以同时勾选多个文件并调整顺序；代理按文件顺序、文件内规则顺序匹配，第一条命中的规则生效。管理页面的表单和高级编辑器都会保存为 YAML。
 
 ```yaml
 rules:
@@ -167,9 +169,11 @@ rules:
       pattern: '^/api'
       replacement: ''
     requestHeaders:
-      X-DevRelay-Local: '1'
-    removeRequestHeaders:
-      - X-Remote-Only
+      - action: add
+        name: X-DevRelay-Local
+        value: '1'
+      - action: remove
+        name: X-Remote-Only
     preserveHost: false
     cors:
       enabled: true
@@ -206,23 +210,45 @@ rules:
 
 `/api/v1/users` 会变成 `/v1/users`。
 
-### 5.4 请求头
+### 5.4 请求头和响应头
 
-增加或覆盖请求头：
-
-```yaml
-"requestHeaders": {
-  "Authorization": "Bearer local-token"
-}
-```
-
-删除请求头：
+`requestHeaders` 和 `responseHeaders` 都使用操作列表：
 
 ```yaml
-"removeRequestHeaders": ["X-Remote-Only"]
+requestHeaders:
+  - action: add
+    name: X-DevRelay-Local
+    value: '1'
+  - action: set
+    name: Authorization
+    value: 'Bearer local-token'
+  - action: remove
+    name: X-Remote-Only
+
+responseHeaders:
+  - action: set
+    name: X-User-Id
+    value: '${userId}'
 ```
 
-### 5.5 `preserveHost`
+`add` 会追加同名 Header，`set` 会覆盖已有值，`remove` 删除 Header。
+
+Header 值支持 `$origin`、`$host`、`$path`、`$query`、`$method` 等内置变量，也支持命名捕获变量。
+
+### 5.5 命名捕获变量
+
+```yaml
+match:
+  path: '^/users/(?P<userId>[^/]+)$'
+responseHeaders:
+  - action: set
+    name: X-User-Id
+    value: '${userId}'
+```
+
+请求 `/users/42` 时，`${userId}` 的值就是 `42`。这是 Python 正则的命名捕获语法。
+
+### 5.6 `preserveHost`
 
 ```yaml
 "preserveHost": false

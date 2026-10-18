@@ -24,14 +24,16 @@ from rules import ConfigError, dump_config, load_config, parse_config_text
 
 
 BASE_DIR = Path(__file__).resolve().parent
-DEFAULT_CONFIG = BASE_DIR / "proxy_config.yml"
+CONFIG_DIR = BASE_DIR / "configs"
+DEFAULT_CONFIG = CONFIG_DIR / "default.yml"
 DEFAULT_STATE = BASE_DIR / ".devrelay_state.json"
 UI_FILE = BASE_DIR / "ui" / "index.html"
 
 
 class AgentManager:
     def __init__(self) -> None:
-        self.config_path = DEFAULT_CONFIG
+        self.config_dir = CONFIG_DIR
+        self.selected_configs: list[str] = []
         self.state_path = DEFAULT_STATE
         self.proxy_port = 8080
         self.process: subprocess.Popen[str] | None = None
@@ -47,6 +49,7 @@ class AgentManager:
             state.setdefault("completed", False)
             state.setdefault("steps", {})
             state.setdefault("proxyPort", self.proxy_port)
+            state.setdefault("selectedConfigs", self.selected_config_names())
             return state
 
     def save_onboarding(self, state: dict[str, Any]) -> dict[str, Any]:
@@ -57,12 +60,11 @@ class AgentManager:
             "showOnLaunch": bool(state.get("showOnLaunch", current["showOnLaunch"])),
             "completed": bool(state.get("completed", current["completed"])),
             "steps": state.get("steps", current["steps"]),
+            "selectedConfigs": state.get("selectedConfigs", current.get("selectedConfigs", [])),
         })
         if not isinstance(current["steps"], dict):
             raise ValueError("初始化步骤状态必须是对象")
-        self.state_path.write_text(
-            json.dumps(current, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-        )
+        self._write_state(current)
         return current
 
     def reset_onboarding(self) -> dict[str, Any]:
@@ -80,9 +82,7 @@ class AgentManager:
         self.proxy_port = port
         state = self.onboarding()
         state["proxyPort"] = port
-        self.state_path.write_text(
-            json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-        )
+        self._write_state(state)
         self._append_log(f"设置代理端口: {port}")
         return self.status()
 
@@ -109,18 +109,171 @@ class AgentManager:
         except (OSError, json.JSONDecodeError):
             return {}
 
+    def _write_state(self, state: dict[str, Any]) -> None:
+        self.state_path.write_text(
+            json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+
+    def _available_config_names(self) -> list[str]:
+        self.config_dir.mkdir(parents=True, exist_ok=True)
+        return sorted(
+            path.name
+            for path in self.config_dir.iterdir()
+            if path.is_file() and path.suffix.lower() in {".yml", ".yaml"}
+        )
+
+    def _config_path(self, name: str) -> Path:
+        if not isinstance(name, str) or not name or Path(name).name != name:
+            raise ValueError("配置文件名无效")
+        path = self.config_dir / name
+        if path.suffix.lower() not in {".yml", ".yaml"}:
+            raise ValueError("配置文件必须使用 .yml 或 .yaml 后缀")
+        return path
+
+    def selected_config_names(self) -> list[str]:
+        available = self._available_config_names()
+        state = self._read_state()
+        saved = state.get("selectedConfigs")
+        if saved is None:
+            return available
+        if not isinstance(saved, list):
+            return []
+        available_set = set(available)
+        return [name for name in saved if isinstance(name, str) and name in available_set]
+
+    def list_config_files(self) -> list[dict[str, Any]]:
+        selected = self.selected_config_names()
+        selected_set = set(selected)
+        files: list[dict[str, Any]] = []
+        for name in self._available_config_names():
+            path = self._config_path(name)
+            item: dict[str, Any] = {
+                "name": name,
+                "selected": name in selected_set,
+                "rules": 0,
+                "valid": True,
+                "error": None,
+            }
+            try:
+                item["rules"] = len(load_config(path).get("rules", []))
+            except (ConfigError, OSError) as exc:
+                item["valid"] = False
+                item["error"] = str(exc)
+            files.append(item)
+        return files
+
+    def select_configs(self, names: Any) -> dict[str, Any]:
+        if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
+            raise ValueError("配置文件选择必须是文件名数组")
+        available = set(self._available_config_names())
+        if any(name not in available for name in names):
+            raise ValueError("选择的配置文件不存在")
+        if self.process is not None and self.process.poll() is None:
+            raise RuntimeError("代理运行中，请先停止代理再修改配置文件选择")
+        self.selected_configs = list(dict.fromkeys(names))
+        state = self.onboarding()
+        state["selectedConfigs"] = self.selected_configs
+        self._write_state(state)
+        return {"selectedConfigs": self.selected_configs, "files": self.list_config_files()}
+
+    def _active_config_name(self) -> str:
+        selected = self.selected_config_names()
+        if selected:
+            return selected[0]
+        available = self._available_config_names()
+        if available:
+            return available[0]
+        raise ConfigError("没有可编辑的配置文件")
+
+    def read_config_file(self, name: str) -> dict[str, Any]:
+        path = self._config_path(name)
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise ConfigError(f"读取配置失败: {exc}") from exc
+        return {"name": name, "text": text, "config": parse_config_text(text, source=path)}
+
+    def save_config_file_text(self, name: str, text: str) -> dict[str, Any]:
+        if not isinstance(text, str):
+            raise ConfigError("配置内容必须是 YAML 文本")
+        path = self._config_path(name)
+        config = parse_config_text(text, source=path)
+        temporary = path.with_suffix(path.suffix + ".tmp")
+        temporary.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
+        try:
+            load_config(temporary)
+            os.replace(temporary, path)
+        except Exception:
+            temporary.unlink(missing_ok=True)
+            raise
+        self._append_log(f"保存配置文件 {name}: {len(config['rules'])} 条规则")
+        return self.read_config_file(name)
+
+    def create_config_file(self, name: str, text: str = "rules: []\n") -> dict[str, Any]:
+        path = self._config_path(name)
+        if path.exists():
+            raise ValueError(f"配置文件已存在: {name}")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return self.save_config_file_text(name, text)
+
+    def rename_config_file(self, old_name: str, new_name: str) -> dict[str, Any]:
+        if self.process is not None and self.process.poll() is None:
+            raise RuntimeError("代理运行中，请先停止代理再重命名配置文件")
+        old_path = self._config_path(old_name)
+        new_path = self._config_path(new_name)
+        if not old_path.exists():
+            raise ConfigError(f"配置文件不存在: {old_name}")
+        if new_path.exists():
+            raise ValueError(f"配置文件已存在: {new_name}")
+        selected = self.selected_config_names()
+        old_path.rename(new_path)
+        if old_name in selected:
+            selected[selected.index(old_name)] = new_name
+            state = self.onboarding()
+            state["selectedConfigs"] = selected
+            self._write_state(state)
+        return {"name": new_name, "files": self.list_config_files()}
+
+    def delete_config_file(self, name: str) -> dict[str, Any]:
+        if self.process is not None and self.process.poll() is None:
+            raise RuntimeError("代理运行中，请先停止代理再删除配置文件")
+        path = self._config_path(name)
+        if not path.exists():
+            raise ConfigError(f"配置文件不存在: {name}")
+        path.unlink()
+        selected = [item for item in self.selected_config_names() if item != name]
+        self.select_configs(selected)
+        return {"files": self.list_config_files(), "selectedConfigs": selected}
+
+    def copy_config_file(self, source_name: str, target_name: str) -> dict[str, Any]:
+        source = self.read_config_file(source_name)
+        return self.create_config_file(target_name, source["text"])
+
+    def combined_config(self, names: list[str] | None = None) -> dict[str, Any]:
+        selected = self.selected_config_names() if names is None else names
+        rules: list[Any] = []
+        for name in selected:
+            config = self.read_config_file(name)["config"]
+            rules.extend(config.get("rules", []))
+        return {"rules": rules}
+
     def status(self) -> dict[str, Any]:
         with self.lock:
             running = self.process is not None and self.process.poll() is None
             pid = self.process.pid if running and self.process else None
+            selected = self.selected_config_names()
+            config = self._read_config()
             return {
                 "running": running,
                 "pid": pid,
                 "proxyHost": "127.0.0.1",
                 "proxyPort": self.proxy_port,
                 "webHost": "127.0.0.1",
-                "configPath": str(self.config_path),
-                "rules": len(self._read_config().get("rules", [])),
+                "configPath": str(self.config_dir),
+                "configPaths": [str(self._config_path(name)) for name in selected],
+                "selectedConfigs": selected,
+                "configFiles": self.list_config_files(),
+                "rules": len(config.get("rules", [])),
                 "certificatePath": str(Path.home() / ".mitmproxy" / "mitmproxy-ca-cert.pem"),
                 "certificateReady": (Path.home() / ".mitmproxy" / "mitmproxy-ca-cert.pem").exists(),
             }
@@ -129,6 +282,13 @@ class AgentManager:
         with self.lock:
             if self.process is not None and self.process.poll() is None:
                 return self.status()
+
+            selected = self.selected_config_names()
+            if not selected:
+                raise RuntimeError("请至少选择一个配置文件后再启动代理")
+            # Validate every selected file before starting mitmproxy so a bad
+            # file cannot leave the user with a half-started proxy process.
+            self.combined_config(selected)
 
             mitmdump = shutil.which("mitmdump")
             if not mitmdump:
@@ -140,7 +300,7 @@ class AgentManager:
                 "-s",
                 str(BASE_DIR / "devrelay_proxy.py"),
                 "--set",
-                f"devrelay_config={self.config_path}",
+                f"devrelay_configs={json.dumps([str(self._config_path(name)) for name in selected], ensure_ascii=False)}",
             ]
             self._append_log("启动代理: " + " ".join(command))
             self.process = subprocess.Popen(
@@ -170,42 +330,18 @@ class AgentManager:
             return self.status()
 
     def save_config(self, config: dict[str, Any]) -> dict[str, Any]:
+        return self.save_config_file_text(self._active_config_name(), dump_config(config))["config"]
+
+    def save_config_file(self, name: str, config: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(config, dict) or not isinstance(config.get("rules"), list):
             raise ConfigError("配置必须是对象，并包含 rules 数组")
-        temporary = self.config_path.with_suffix(".tmp")
-        temporary.write_text(
-            dump_config(config),
-            encoding="utf-8",
-        )
-        try:
-            load_config(temporary)
-            os.replace(temporary, self.config_path)
-        except Exception:
-            temporary.unlink(missing_ok=True)
-            raise
-        self._append_log(f"保存配置: {len(config['rules'])} 条规则")
-        return config
+        return self.save_config_file_text(name, dump_config(config))
 
     def read_config_text(self) -> str:
-        try:
-            return self.config_path.read_text(encoding="utf-8")
-        except OSError as exc:
-            raise ConfigError(f"读取配置失败: {exc}") from exc
+        return self.read_config_file(self._active_config_name())["text"]
 
     def save_config_text(self, text: str) -> dict[str, Any]:
-        if not isinstance(text, str):
-            raise ConfigError("配置内容必须是 YAML 文本")
-        config = parse_config_text(text, source=self.config_path)
-        temporary = self.config_path.with_suffix(".tmp")
-        temporary.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
-        try:
-            load_config(temporary)
-            os.replace(temporary, self.config_path)
-        except Exception:
-            temporary.unlink(missing_ok=True)
-            raise
-        self._append_log(f"保存配置: {len(config['rules'])} 条规则")
-        return config
+        return self.save_config_file_text(self._active_config_name(), text)["config"]
 
     def launch_browser(self, browser: str, url: str) -> None:
         if browser not in {"chrome", "edge"}:
@@ -228,8 +364,8 @@ class AgentManager:
 
     def _read_config(self) -> dict[str, Any]:
         try:
-            return load_config(self.config_path)
-        except ConfigError:
+            return self.combined_config()
+        except (ConfigError, ValueError):
             return {"rules": []}
 
     def _read_proxy_logs(self) -> None:
@@ -296,6 +432,80 @@ def put_settings(settings: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.get("/api/config/files")
+def get_config_files() -> dict[str, Any]:
+    return {
+        "files": manager.list_config_files(),
+        "selectedConfigs": manager.selected_config_names(),
+    }
+
+
+@app.put("/api/config/selection")
+def put_config_selection(payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return manager.select_configs(payload.get("selectedConfigs", []))
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/config/files")
+def create_config_file(payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return manager.create_config_file(str(payload.get("name", "")), str(payload.get("text", "rules: []\n")))
+    except (ConfigError, OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/config/files/import")
+def import_config_file(payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return manager.create_config_file(str(payload.get("name", "")), str(payload.get("text", "")))
+    except (ConfigError, OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/config/files/{name}")
+def get_config_file(name: str) -> dict[str, Any]:
+    try:
+        return manager.read_config_file(name)
+    except (ConfigError, OSError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.put("/api/config/files/{name}")
+def put_config_file(name: str, payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        if "config" in payload:
+            return manager.save_config_file(name, payload["config"])
+        return manager.save_config_file_text(name, str(payload.get("text", "")))
+    except (ConfigError, OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.patch("/api/config/files/{name}")
+def patch_config_file(name: str, payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return manager.rename_config_file(name, str(payload.get("newName", "")))
+    except (ConfigError, OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/config/files/{name}/copy")
+def copy_config_file(name: str, payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return manager.copy_config_file(name, str(payload.get("newName", "")))
+    except (ConfigError, OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/api/config/files/{name}")
+def delete_config_file(name: str) -> dict[str, Any]:
+    try:
+        return manager.delete_config_file(name)
+    except (ConfigError, OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/api/config")
 def get_config() -> dict[str, Any]:
     return manager._read_config()
@@ -329,7 +539,7 @@ def put_config_raw(payload: dict[str, Any]) -> dict[str, Any]:
 def start_proxy() -> dict[str, Any]:
     try:
         return manager.start_proxy()
-    except (OSError, RuntimeError) as exc:
+    except (ConfigError, OSError, RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
@@ -358,11 +568,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="DevRelay local web manager")
     parser.add_argument("--web-port", type=int, default=8787)
     parser.add_argument("--proxy-port", type=int, default=None)
-    parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    parser.add_argument("--config-dir", type=Path, default=CONFIG_DIR)
+    parser.add_argument("--config", type=Path, default=None, help="兼容参数：指定包含配置文件的目录")
     parser.add_argument("--no-open", action="store_true")
     args = parser.parse_args()
 
-    manager.config_path = args.config.expanduser().resolve()
+    manager.config_dir = (
+        args.config.expanduser().resolve().parent
+        if args.config is not None
+        else args.config_dir.expanduser().resolve()
+    )
+    manager.config_dir.mkdir(parents=True, exist_ok=True)
     saved_state = manager._read_state()
     saved_port = saved_state.get("proxyPort", 8080)
     if args.proxy_port is None:

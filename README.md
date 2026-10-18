@@ -49,7 +49,7 @@ http://localhost:7890
 
 ### 2. 配置规则
 
-编辑 [proxy_config.yml](./proxy_config.yml)。当前示例将：
+编辑 [configs/default.yml](./configs/default.yml)。当前示例将：
 
 ```text
 https://api.apifox.com/api/v1/project-categories
@@ -69,7 +69,7 @@ http://localhost:7890/v1/project-categories
 uv run python devrelay_agent.py
 ```
 
-它只会打开 `http://127.0.0.1:8787` 管理页面，不会自动启动代理。代理由页面中的按钮或初始化向导启动。页面可以编辑 YAML、启停代理、查看日志和启动专用浏览器。
+它只会打开 `http://127.0.0.1:8787` 管理页面，不会自动启动代理。代理由页面中的按钮或初始化向导启动。页面可以管理多个 YAML 配置文件、用表单或 YAML 编辑规则、启停代理、查看日志和启动专用浏览器。
 
 ### 4. 手动启动 mitmproxy（排错方式）
 
@@ -80,7 +80,7 @@ cd proxy
 uv run mitmdump \
   -p 8080 \
   -s devrelay_proxy.py \
-  --set devrelay_config=proxy_config.yml
+  --set 'devrelay_configs=["configs/default.yml"]'
 ```
 
 看到 `HTTP(S) proxy listening at *:8080` 后，保持这个终端运行。
@@ -146,7 +146,9 @@ uv run python launch_browser.py \
 
 ## 五、完整配置格式
 
-`proxy_config.yml` 的根对象包含 `rules` 数组。规则按数组顺序匹配，第一条命中的规则生效。管理页面的配置编辑器使用 YAML，规则名称可以省略。
+每个 `configs/*.yml` 文件的根对象包含 `rules` 数组。管理页面可以同时勾选多个文件并调整顺序；代理会按文件顺序、文件内规则顺序匹配，第一条命中的规则生效。
+
+管理页面支持新建、编辑、重命名、删除、复制和导入配置文件。启动代理前勾选要生效的文件并调整顺序；没有选中任何文件时，启动会被阻止。
 
 ```yaml
 rules:
@@ -166,9 +168,11 @@ rules:
       pattern: '^/api'
       replacement: ''
     requestHeaders:
-      X-DevRelay-Local: '1'
-    removeRequestHeaders:
-      - X-Remote-Only
+      - action: add
+        name: X-DevRelay-Local
+        value: '1'
+      - action: remove
+        name: X-Remote-Only
     preserveHost: false
     cors:
       enabled: true
@@ -248,26 +252,47 @@ rules:
 
 效果：`/api/v1/project-categories` 会变成 `/v1/project-categories`。
 
-### `requestHeaders`
+### 请求头和响应头
 
-给转发到本地的请求增加或覆盖请求头：
-
-```yaml
-"requestHeaders": {
-  "X-DevRelay-Local": "1",
-  "Authorization": "Bearer local-token"
-}
-```
-
-### `removeRequestHeaders`
-
-转发前删除请求头：
+`requestHeaders` 和 `responseHeaders` 都使用操作列表：
 
 ```yaml
-"removeRequestHeaders": [
-  "X-Remote-Only"
-]
+requestHeaders:
+  - action: add
+    name: X-DevRelay-Local
+    value: '1'
+  - action: set
+    name: Authorization
+    value: 'Bearer local-token'
+  - action: remove
+    name: X-Remote-Only
+
+responseHeaders:
+  - action: set
+    name: X-User-Id
+    value: '${userId}'
 ```
+
+- `add`：追加 Header，同名 Header 可以出现多次。
+- `set`：覆盖已有 Header。
+- `remove`：删除 Header，不需要填写 `value`。
+
+Header 值支持 `$origin`、`$host`、`$path`、`$query`、`$method` 等内置变量，也支持命名捕获变量。
+
+### 命名捕获变量
+
+匹配正则使用 Python 命名捕获语法：
+
+```yaml
+match:
+  path: '^/users/(?P<userId>[^/]+)$'
+responseHeaders:
+  - action: set
+    name: X-User-Id
+    value: '${userId}'
+```
+
+请求 `/users/42` 时，`${userId}` 的值就是 `42`。命名捕获可以写在 `host`、`path`、`method` 或匹配请求头的正则中。
 
 ### `preserveHost`
 
