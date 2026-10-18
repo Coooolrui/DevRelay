@@ -1,0 +1,11 @@
+[project]
+name = "poseidon-local-proxy"
+version = "0.1.0"
+description = "Rule based local HTTPS proxy for Poseidon browser debugging"
+requires-python = ">=3.9,<3.14"
+dependencies = [
+  "mitmproxy>=9,<12",
+]
+
+[tool.uv]
+package = false
