@@ -160,7 +160,6 @@ rules:
       path: '^/api(?:/|$)'
       method: '^(GET|POST|PUT|PATCH|DELETE|OPTIONS)$'
     target:
-      scheme: http
       host: localhost
       port: 9000
     rewritePath:
@@ -192,7 +191,7 @@ rules:
 
 ### 5.2 `target`
 
-指定本地目标服务。`scheme` 支持 `http` 和 `https`，端口范围是 `1` 到 `65535`。
+指定本地目标服务。协议由主界面的“本地服务协议”全局设置统一控制，默认是 `http`；每条规则只配置主机和端口，端口范围是 `1` 到 `65535`。
 
 ### 5.3 `rewritePath`
 

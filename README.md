@@ -159,7 +159,6 @@ rules:
       path: '^/api/v1/project-categories(?:$|\?)'
       method: '^(GET|POST|PUT|PATCH|DELETE|OPTIONS)$'
     target:
-      scheme: http
       host: localhost
       port: 7890
     rewritePath:
@@ -215,17 +214,16 @@ rules:
 
 ### `target`
 
-目标本地服务地址：
+目标本地服务地址。协议由主界面的“本地服务协议”全局设置统一控制，默认是 `http`；每条规则只配置主机和端口：
 
 ```yaml
 "target": {
-  "scheme": "http",
   "host": "localhost",
   "port": 7890
 }
 ```
 
-`scheme` 只能是 `http` 或 `https`，端口必须在 `1` 到 `65535` 之间。
+端口必须在 `1` 到 `65535` 之间。
 
 ### `rewritePath`
 

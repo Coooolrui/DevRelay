@@ -176,6 +176,18 @@ class RuleMatchingTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "至少选择一个配置文件"):
                 manager.start_proxy()
 
+    def test_target_scheme_is_global(self):
+        from devrelay_agent import AgentManager
+
+        with tempfile.TemporaryDirectory() as directory:
+            manager = AgentManager()
+            manager.config_dir = Path(directory) / "configs"
+            manager.state_path = Path(directory) / "state.json"
+            manager.create_config_file("default.yml", "rules: []\n")
+            status = manager.set_target_scheme("https")
+            self.assertEqual(status["targetScheme"], "https")
+            self.assertEqual(manager.onboarding()["targetScheme"], "https")
+
 
 if __name__ == "__main__":
     unittest.main()

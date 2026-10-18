@@ -19,6 +19,7 @@ class DevRelayProxy:
         self.config_paths: list[Path] = [Path("configs/default.yml")]
         self.config: dict[str, Any] = {"rules": []}
         self.config_mtimes: dict[Path, int] = {}
+        self.target_scheme = "http"
 
     def load(self, loader: Any) -> None:
         loader.add_option(
@@ -26,6 +27,12 @@ class DevRelayProxy:
             typespec=str,
             default="[]",
             help="JSON array of DevRelay proxy YAML configuration paths",
+        )
+        loader.add_option(
+            name="devrelay_target_scheme",
+            typespec=str,
+            default="http",
+            help="Global scheme used when connecting to local targets",
         )
 
     def configure(self, updated: set[str]) -> None:
@@ -39,6 +46,12 @@ class DevRelayProxy:
                 ctx.log.error(f"配置文件列表无效: {exc}")
                 self.config_paths = []
             self._reload_config(force=True)
+        if "devrelay_target_scheme" in updated:
+            scheme = str(ctx.options.devrelay_target_scheme).lower()
+            if scheme in {"http", "https"}:
+                self.target_scheme = scheme
+            else:
+                ctx.log.error(f"本地服务协议无效: {scheme}")
 
     def request(self, flow: http.HTTPFlow) -> None:
         self._reload_config()
@@ -67,7 +80,8 @@ class DevRelayProxy:
         original_port = request.port
         original_scheme = request.scheme
         try:
-            scheme, host, port = parse_target(rule)
+            _, host, port = parse_target(rule)
+            scheme = self.target_scheme
         except ConfigError as exc:
             ctx.log.error(f"规则 {rule.get('name', '<unnamed>')} 目标无效: {exc}")
             return

@@ -6,7 +6,6 @@ rules:
     path: ^/api(?:/|$)
     method: ^(GET|POST|PUT|PATCH|DELETE|OPTIONS)$
   target:
-    scheme: http
     host: localhost
     port: 7890
   preserveHost: false
