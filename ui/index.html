@@ -213,6 +213,15 @@
       if (corsMethod) corsMethod.title = '可多选允许的方法';
       if (corsHeader) corsHeader.title = '可多选允许的请求头';
 
+      const filePanel = document.querySelector('.file-panel');
+      const fileActions = filePanel && filePanel.querySelector('.actions');
+      const saveSelection = filePanel && [...filePanel.querySelectorAll('button')].find((button) => button.textContent.trim() === '保存选择');
+      if (fileActions && saveSelection && saveSelection.parentElement !== fileActions) {
+        const oldActions = saveSelection.parentElement;
+        fileActions.append(saveSelection);
+        oldActions.remove();
+      }
+
       function selectMatchMethod(value) {
         if (!matchMethod) return;
         const known = [...matchMethod.options].some((option) => option.value === value);
