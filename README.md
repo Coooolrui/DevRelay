@@ -158,8 +158,6 @@ rules:
       host: '^api\.apifox\.com$'
       path: '^/api/v1/project-categories(?:$|\?)'
       method: '^(GET|POST|PUT|PATCH|DELETE|OPTIONS)$'
-      headers:
-        X-Environment: '^test$'
     target:
       scheme: http
       host: localhost
@@ -215,16 +213,6 @@ rules:
 
 匹配 HTTP 方法。跨域请求可能先使用 `OPTIONS` 预检，因此需要代理预检时必须把 `OPTIONS` 放进正则。
 
-### `match.headers`
-
-按请求头名称匹配正则。名称大小写不敏感，值使用正则匹配：
-
-```yaml
-"headers": {
-  "X-Environment": "^test$"
-}
-```
-
 ### `target`
 
 目标本地服务地址：
@@ -255,6 +243,7 @@ rules:
 ### 请求头和响应头
 
 `requestHeaders` 和 `responseHeaders` 都使用操作列表：
+规则先按域名、路径和方法命中，命中后才执行这些 Header 操作。
 
 ```yaml
 requestHeaders:
@@ -292,7 +281,7 @@ responseHeaders:
     value: '${userId}'
 ```
 
-请求 `/users/42` 时，`${userId}` 的值就是 `42`。命名捕获可以写在 `host`、`path`、`method` 或匹配请求头的正则中。
+请求 `/users/42` 时，`${userId}` 的值就是 `42`。命名捕获可以写在 `host`、`path` 或 `method` 正则中。
 
 ### `preserveHost`
 

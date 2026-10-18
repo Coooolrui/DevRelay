@@ -159,8 +159,6 @@ rules:
       host: '^api\.example\.com$'
       path: '^/api(?:/|$)'
       method: '^(GET|POST|PUT|PATCH|DELETE|OPTIONS)$'
-      headers:
-        X-Environment: '^test$'
     target:
       scheme: http
       host: localhost
@@ -186,12 +184,11 @@ rules:
 
 ### 5.1 `match`
 
-`host`、`path`、`method` 和 `headers` 的值都是 Python 正则表达式。
+`host`、`path`、`method` 的值都是 Python 正则表达式。
 
 - `host` 只写域名，不写协议和路径。
 - `path` 可以包含查询字符串。
 - 前端跨域请求可能先发 `OPTIONS`，需要预检时必须匹配 `OPTIONS`。
-- `headers` 的名称不区分大小写，值按正则匹配。
 
 ### 5.2 `target`
 
@@ -213,6 +210,7 @@ rules:
 ### 5.4 请求头和响应头
 
 `requestHeaders` 和 `responseHeaders` 都使用操作列表：
+规则先按域名、路径和方法命中，命中后才执行这些 Header 操作。
 
 ```yaml
 requestHeaders:
@@ -324,7 +322,7 @@ Access-Control-Allow-Credentials: true
 - SSE（Server-Sent Events）和其他 HTTP 长连接。
 - 文件上传、普通请求体和请求头。
 - 请求头增加、覆盖和删除。
-- 按域名、路径、方法、请求头正则匹配。
+- 按域名、路径和方法匹配。
 - 请求路径正则重写。
 - CORS 响应头和 `OPTIONS` 预检处理。
 

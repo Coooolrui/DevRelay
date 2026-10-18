@@ -21,7 +21,6 @@ class RuleMatchingTest(unittest.TestCase):
                 "host": r"^api\.example\.test$",
                 "path": r"^/api(?:/|$)",
                 "method": r"^(GET|POST)$",
-                "headers": {"X-Env": r"^test$"},
             },
             "target": {"scheme": "http", "host": "127.0.0.1", "port": 8080},
         }
@@ -33,7 +32,6 @@ class RuleMatchingTest(unittest.TestCase):
                 host="api.example.test",
                 path="/api/users?active=1",
                 method="POST",
-                headers={"x-env": "test"},
             )
         )
 
@@ -44,7 +42,17 @@ class RuleMatchingTest(unittest.TestCase):
                 host="api.example.test",
                 path="/api/users",
                 method="OPTIONS",
-                headers={"X-Env": "test"},
+            )
+        )
+
+    def test_request_headers_do_not_control_rule_matching(self):
+        rule = {**self.rule, "match": {**self.rule["match"], "headers": {"X-Env": r"^test$"}}}
+        self.assertTrue(
+            rule_matches(
+                rule,
+                host="api.example.test",
+                path="/api/users",
+                method="GET",
             )
         )
 

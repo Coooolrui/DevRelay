@@ -53,17 +53,6 @@ def _compile(pattern: str | None, field_name: str) -> re.Pattern[str] | None:
         raise ConfigError(f"{field_name} 正则无效: {exc}") from exc
 
 
-def _headers_match(expected: Mapping[str, str], actual: Mapping[str, str]) -> bool:
-    normalized = {str(key).lower(): str(value) for key, value in actual.items()}
-    for name, pattern in expected.items():
-        if not isinstance(name, str) or not isinstance(pattern, str):
-            return False
-        value = normalized.get(name.lower())
-        if value is None or re.search(pattern, value) is None:
-            return False
-    return True
-
-
 def rule_matches(
     rule: Mapping[str, Any],
     *,
@@ -89,11 +78,6 @@ def rule_matches(
         if pattern is not None and pattern.search(value) is None:
             return False
 
-    header_patterns = match.get("headers", {})
-    if header_patterns and not isinstance(header_patterns, Mapping):
-        return False
-    if header_patterns and not _headers_match(header_patterns, headers or {}):
-        return False
     return True
 
 
@@ -144,17 +128,6 @@ def capture_rule_values(
         if matched:
             captures.update({name: group for name, group in matched.groupdict().items() if group is not None})
 
-    header_patterns = match.get("headers", {})
-    if isinstance(header_patterns, Mapping):
-        normalized = {str(key).lower(): str(value) for key, value in (headers or {}).items()}
-        for name, pattern_text in header_patterns.items():
-            value = normalized.get(str(name).lower())
-            pattern = _compile(pattern_text, f"match.headers.{name}")
-            if value is None or pattern is None:
-                continue
-            matched = pattern.search(value)
-            if matched:
-                captures.update({key: group for key, group in matched.groupdict().items() if group is not None})
     return captures
 
 

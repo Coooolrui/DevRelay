@@ -43,13 +43,11 @@ class DevRelayProxy:
     def request(self, flow: http.HTTPFlow) -> None:
         self._reload_config()
         request = flow.request
-        headers = {name: value for name, value in request.headers.items()}
         rule = find_rule(
             self.config.get("rules", []),
             host=request.pretty_host,
             path=request.path,
             method=request.method,
-            headers=headers,
         )
         if rule is None:
             return
@@ -59,7 +57,6 @@ class DevRelayProxy:
             host=request.pretty_host,
             path=request.path,
             method=request.method,
-            headers=headers,
         )
 
         if request.method == "OPTIONS" and self._cors_enabled(rule):
