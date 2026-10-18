@@ -3,7 +3,7 @@ rules:
   enabled: true
   match:
     host: ^api\.apifox\.com$
-    path: ^/api(?:/|$)
+    path: ^/api/v1/project-categories(?:/|$)
     method: ^(GET|POST|PUT|PATCH|DELETE|OPTIONS)$
   target:
     host: localhost
@@ -18,3 +18,4 @@ rules:
     allowCredentials: true
     allowMethods: GET, POST, PUT, PATCH, DELETE, OPTIONS
     allowHeaders: Content-Type, Authorization, X-Requested-With
+    maxAge: 600
