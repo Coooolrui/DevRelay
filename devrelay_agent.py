@@ -36,7 +36,6 @@ class AgentManager:
         self.selected_configs: list[str] = []
         self.state_path = DEFAULT_STATE
         self.proxy_port = 8080
-        self.target_scheme = "http"
         self.process: subprocess.Popen[str] | None = None
         self.browser_processes: list[subprocess.Popen[Any]] = []
         self.logs: deque[str] = deque(maxlen=300)
@@ -50,7 +49,6 @@ class AgentManager:
             state.setdefault("completed", False)
             state.setdefault("steps", {})
             state.setdefault("proxyPort", self.proxy_port)
-            state.setdefault("targetScheme", self.target_scheme)
             state.setdefault("selectedConfigs", self.selected_config_names())
             return state
 
@@ -86,19 +84,6 @@ class AgentManager:
         state["proxyPort"] = port
         self._write_state(state)
         self._append_log(f"设置代理端口: {port}")
-        return self.status()
-
-    def set_target_scheme(self, value: Any) -> dict[str, Any]:
-        if self.process is not None and self.process.poll() is None:
-            raise RuntimeError("代理运行中，请先停止代理再修改本地服务协议")
-        scheme = str(value or "http").lower()
-        if scheme not in {"http", "https"}:
-            raise ValueError("本地服务协议必须是 http 或 https")
-        self.target_scheme = scheme
-        state = self.onboarding()
-        state["targetScheme"] = scheme
-        self._write_state(state)
-        self._append_log(f"设置本地服务协议: {scheme}")
         return self.status()
 
     def check_local_service(self, url: str, timeout: float = 3.0) -> dict[str, Any]:
@@ -283,7 +268,6 @@ class AgentManager:
                 "pid": pid,
                 "proxyHost": "127.0.0.1",
                 "proxyPort": self.proxy_port,
-                "targetScheme": self.target_scheme,
                 "webHost": "127.0.0.1",
                 "configPath": str(self.config_dir),
                 "configPaths": [str(self._config_path(name)) for name in selected],
@@ -317,8 +301,6 @@ class AgentManager:
                 str(BASE_DIR / "devrelay_proxy.py"),
                 "--set",
                 f"devrelay_configs={json.dumps([str(self._config_path(name)) for name in selected], ensure_ascii=False)}",
-                "--set",
-                f"devrelay_target_scheme={self.target_scheme}",
             ]
             self._append_log("启动代理: " + " ".join(command))
             self.process = subprocess.Popen(
@@ -447,8 +429,6 @@ def put_settings(settings: dict[str, Any]) -> dict[str, Any]:
     try:
         if "proxyPort" in settings:
             manager.set_proxy_port(settings.get("proxyPort"))
-        if "targetScheme" in settings:
-            manager.set_target_scheme(settings.get("targetScheme"))
         return manager.status()
     except (OSError, RuntimeError, TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -603,7 +583,6 @@ def main() -> None:
     manager.config_dir.mkdir(parents=True, exist_ok=True)
     saved_state = manager._read_state()
     saved_port = saved_state.get("proxyPort", 8080)
-    saved_scheme = str(saved_state.get("targetScheme", "http")).lower()
     if args.proxy_port is None:
         try:
             saved_port = int(saved_port)
@@ -612,7 +591,6 @@ def main() -> None:
         if not 1 <= saved_port <= 65535:
             saved_port = 8080
     manager.proxy_port = args.proxy_port if args.proxy_port is not None else saved_port
-    manager.target_scheme = saved_scheme if saved_scheme in {"http", "https"} else "http"
     if not args.no_open:
         threading.Timer(
             1.0,
