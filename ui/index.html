@@ -62,6 +62,14 @@
     #mainFormPanel > .rule-builder { grid-column: 1; grid-row: 2; }
     #mainFormPanel > .rule-list { grid-column: 2; grid-row: 1 / span 2; display: grid; gap: 6px; max-height: 420px; overflow-x: hidden; overflow-y: auto; padding: 0 0 0 12px; margin: 0; border-bottom: 0; border-left: 1px solid var(--line); }
     #mainFormPanel > .rule-list .rule-chip { width: 100%; overflow: hidden; text-align: left; text-overflow: ellipsis; }
+    .rule-sidebar { grid-column: 2; grid-row: 1 / span 2; min-width: 0; }
+    .rule-sidebar-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+    .rule-sidebar-head strong { font-size: 15px; }
+    .rule-sidebar-head button { width: 32px; height: 32px; padding: 0; font-size: 22px; line-height: 1; }
+    .rule-sidebar .rule-list { display: grid; gap: 6px; max-height: 380px; overflow-x: hidden; overflow-y: auto; padding: 0 0 0 12px; margin: 0; border-bottom: 0; border-left: 1px solid var(--line); }
+    .rule-item { display: flex; align-items: stretch; gap: 6px; min-width: 0; }
+    .rule-item .rule-chip { flex: 1 1 auto; min-width: 0; overflow: hidden; text-align: left; text-overflow: ellipsis; }
+    .rule-delete { flex: 0 0 auto; padding: 6px 8px; color: #ffb2b2; }
     .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
     .form-grid .full { grid-column: 1 / -1; }
     .group { margin: 16px 0; padding-top: 14px; border-top: 1px solid var(--line); }
@@ -72,7 +80,7 @@
     .header-row.remove .header-value { display: none; }
     .header-row button { padding: 6px 9px; }
     .empty-editor { padding: 30px 10px; color: var(--muted); text-align: center; border: 1px dashed var(--line); }
-    @media (max-width: 860px) { .config-layout { grid-template-columns: 1fr; } .file-panel { border-right: 0; border-bottom: 1px solid var(--line); padding: 0 0 16px; } #mainFormPanel { grid-template-columns: 1fr; } #mainFormPanel > .actions, #mainFormPanel > .rule-builder, #mainFormPanel > .rule-list { grid-column: 1; grid-row: auto; } #mainFormPanel > .rule-list { display: flex; max-height: none; overflow-x: auto; overflow-y: hidden; padding: 0 0 10px; margin-bottom: 14px; border-left: 0; border-bottom: 1px solid var(--line); } #mainFormPanel > .rule-list .rule-chip { width: auto; } }
+    @media (max-width: 860px) { .config-layout { grid-template-columns: 1fr; } .file-panel { border-right: 0; border-bottom: 1px solid var(--line); padding: 0 0 16px; } #mainFormPanel { grid-template-columns: 1fr; } #mainFormPanel > .actions, #mainFormPanel > .rule-builder, #mainFormPanel > .rule-list, #mainFormPanel > .rule-sidebar { grid-column: 1; grid-row: auto; } .rule-sidebar .rule-list { display: flex; max-height: none; overflow-x: auto; overflow-y: hidden; padding: 0 0 10px; margin-bottom: 14px; border-left: 0; border-bottom: 1px solid var(--line); } .rule-sidebar .rule-item { flex: 0 0 auto; } .rule-sidebar .rule-item .rule-chip { width: auto; } }
     @media (max-width: 620px) { .form-grid { grid-template-columns: 1fr; } .form-grid .full { grid-column: auto; } .header-row, .header-row.remove { grid-template-columns: 1fr; } }
     .field { margin: 0 0 16px; } .field label { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; color: var(--text); } .optional { color: var(--muted); font-size: 11px; font-weight: 400; }
     .info { position: relative; width: 18px; height: 18px; padding: 0; border: 1px solid #607286; border-radius: 50%; background: transparent; color: var(--muted); font-size: 11px; line-height: 16px; text-align: center; }
@@ -226,6 +234,71 @@
         fileActions.append(saveSelection);
         oldActions.remove();
       }
+
+      const mainFormPanel = $('mainFormPanel');
+      const mainRuleList = $('mainRuleList');
+      const addActions = mainFormPanel && [...mainFormPanel.children].find((child) => child.classList.contains('actions'));
+      if (mainFormPanel && mainRuleList && addActions) {
+        const addButton = addActions.querySelector('button');
+        const sidebar = document.createElement('aside');
+        sidebar.className = 'rule-sidebar';
+        const sidebarHead = document.createElement('div');
+        sidebarHead.className = 'rule-sidebar-head';
+        const sidebarTitle = document.createElement('strong');
+        sidebarTitle.textContent = '规则列表';
+        addButton.textContent = '+';
+        addButton.title = '新增规则';
+        addButton.setAttribute('aria-label', '新增规则');
+        sidebarHead.append(sidebarTitle, addButton);
+        sidebar.append(sidebarHead, mainRuleList);
+        addActions.remove();
+        mainFormPanel.append(sidebar);
+      }
+
+      async function removeMainRule(index) {
+        const rules = activeFileConfig.rules || [];
+        const removed = rules[index];
+        if (!activeConfigName || !removed || !confirm(`确定删除规则“${removed.name || `规则 ${index + 1}`}”？`)) return;
+        const previousIndex = activeRuleIndex;
+        rules.splice(index, 1);
+        activeRuleIndex = rules.length ? Math.min(previousIndex, rules.length - 1) : -1;
+        try {
+          const data = await request('/api/config/files/' + encodeURIComponent(activeConfigName), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config: activeFileConfig }) });
+          activeFileConfig = data.config;
+          currentConfig = data.config;
+          renderMainRuleList();
+          renderConfigFiles();
+          refreshStatus();
+          showMessage('规则已删除');
+        } catch (error) {
+          rules.splice(index, 0, removed);
+          activeRuleIndex = previousIndex;
+          renderMainRuleList();
+          showMessage(error.message, true);
+        }
+      }
+
+      const originalRenderMainRuleList = renderMainRuleList;
+      renderMainRuleList = function() {
+        originalRenderMainRuleList();
+        const list = $('mainRuleList');
+        if (!list) return;
+        [...list.querySelectorAll('.rule-chip')].forEach((chip, index) => {
+          const item = document.createElement('div');
+          item.className = 'rule-item';
+          const deleteButton = document.createElement('button');
+          deleteButton.type = 'button';
+          deleteButton.className = 'rule-delete';
+          deleteButton.textContent = '删除';
+          deleteButton.title = '删除规则';
+          deleteButton.addEventListener('click', (event) => {
+            event.stopPropagation();
+            removeMainRule(index);
+          });
+          chip.replaceWith(item);
+          item.append(chip, deleteButton);
+        });
+      };
 
       function selectMatchMethod(value) {
         if (!matchMethod) return;
