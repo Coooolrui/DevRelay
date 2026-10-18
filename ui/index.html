@@ -52,8 +52,11 @@
     .config-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; }
     .config-toolbar strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .config-editor { min-width: 0; }
-    .main-tabs { display: flex; gap: 4px; margin-bottom: 12px; }
-    .main-tabs button.active { border-color: var(--blue); color: var(--blue); }
+    .main-tabs { display: flex; gap: 0; margin-bottom: 12px; }
+    .main-tabs button { position: relative; margin-left: -1px; border-radius: 0; }
+    .main-tabs button:first-child { margin-left: 0; border-radius: 4px 0 0 4px; }
+    .main-tabs button:last-child { border-radius: 0 4px 4px 0; }
+    .main-tabs button.active { z-index: 1; border-color: var(--blue); color: var(--blue); }
     .rule-list { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 10px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
     .rule-chip { white-space: nowrap; }
     .rule-chip.active { border-color: var(--blue); color: var(--blue); }
