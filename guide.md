@@ -1,4 +1,4 @@
-# Poseidon 本地代理使用与配置指南
+# DevRelay 本地代理使用与配置指南
 
 ## 1. 工作原理
 
@@ -35,14 +35,37 @@ Windows PowerShell 使用相同命令，只需先进入项目的 `proxy` 目录�
 http://localhost:7890
 ```
 
-### 3.2 启动 mitmproxy
+### 3.2 启动 DevRelay Web 管理服务
+
+推荐使用 Web 管理页启动：
+
+```bash
+cd proxy
+uv run python devrelay_agent.py
+```
+
+它会自动：
+
+- 启动 mitmproxy 代理服务。
+- 打开 `http://127.0.0.1:8787` 管理页面。
+- 提供规则编辑、保存、代理启停、日志和浏览器启动按钮。
+
+如果不希望自动打开管理页面：
+
+```bash
+uv run python devrelay_agent.py --no-open
+```
+
+终端里的 Agent 进程结束后，代理子进程会被停止；关闭管理页面本身不会停止代理。
+
+### 3.3 手动启动 mitmproxy（排错方式）
 
 ```bash
 cd proxy
 uv run mitmdump \
   -p 8080 \
-  -s poseidon_proxy.py \
-  --set poseidon_config=proxy_config.json
+  -s devrelay_proxy.py \
+  --set devrelay_config=proxy_config.json
 ```
 
 看到下面的日志后保持终端运行：
@@ -53,7 +76,7 @@ HTTP(S) proxy listening at *:8080
 
 修改 JSON 配置后，代理会在下一次请求时重新读取。修改 Python 代码后必须重启 mitmproxy。
 
-### 3.3 安装 HTTPS 证书
+### 3.4 安装 HTTPS 证书
 
 在另一个终端启动专用浏览器：
 
@@ -72,7 +95,7 @@ Windows：下载证书，导入“受信任的根证书颁发机构”。
 
 安装后完全退出并重新启动专用浏览器。
 
-### 3.4 启动联调浏览器
+### 3.5 启动联调浏览器
 
 ```bash
 uv run python launch_browser.py \
@@ -129,7 +152,7 @@ http://localhost:7890/v1/project-categories
         "replacement": ""
       },
       "requestHeaders": {
-        "X-Poseidon-Local": "1"
+        "X-DevRelay-Local": "1"
       },
       "removeRequestHeaders": ["X-Remote-Only"],
       "preserveHost": false,

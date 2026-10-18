@@ -13,7 +13,7 @@ from mitmproxy import ctx, http
 from rules import ConfigError, find_rule, load_config, parse_target
 
 
-class PoseidonProxy:
+class DevRelayProxy:
     def __init__(self) -> None:
         self.config_path = Path("proxy_config.json")
         self.config: dict[str, Any] = {"rules": []}
@@ -21,15 +21,15 @@ class PoseidonProxy:
 
     def load(self, loader: Any) -> None:
         loader.add_option(
-            name="poseidon_config",
+            name="devrelay_config",
             typespec=str,
             default="proxy_config.json",
-            help="Poseidon proxy JSON configuration path",
+            help="DevRelay proxy JSON configuration path",
         )
 
     def configure(self, updated: set[str]) -> None:
-        if "poseidon_config" in updated:
-            self.config_path = Path(ctx.options.poseidon_config).expanduser()
+        if "devrelay_config" in updated:
+            self.config_path = Path(ctx.options.devrelay_config).expanduser()
             self._reload_config(force=True)
 
     def request(self, flow: http.HTTPFlow) -> None:
@@ -45,7 +45,7 @@ class PoseidonProxy:
         )
         if rule is None:
             return
-        flow.metadata["poseidon_rule"] = rule
+        flow.metadata["devrelay_rule"] = rule
 
         if request.method == "OPTIONS" and self._cors_enabled(rule):
             flow.response = http.Response.make(204, b"", self._cors_headers(flow, rule))
@@ -85,7 +85,7 @@ class PoseidonProxy:
         )
 
     def response(self, flow: http.HTTPFlow) -> None:
-        rule = flow.metadata.get("poseidon_rule")
+        rule = flow.metadata.get("devrelay_rule")
         if flow.response is None or not isinstance(rule, dict):
             return
         if self._cors_enabled(rule):
@@ -178,4 +178,4 @@ class PoseidonProxy:
         return isinstance(cors, Mapping) and cors.get("enabled", False) is True
 
 
-addons = [PoseidonProxy()]
+addons = [DevRelayProxy()]

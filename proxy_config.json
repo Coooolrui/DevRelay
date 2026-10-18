@@ -18,7 +18,7 @@
         "replacement": ""
       },
       "requestHeaders": {
-        "X-Poseidon-Local": "1"
+        "X-DevRelay-Local": "1"
       },
       "cors": {
         "enabled": true,

@@ -1,10 +1,12 @@
 [project]
-name = "poseidon-local-proxy"
+name = "devrelay-local-proxy"
 version = "0.1.0"
-description = "Rule based local HTTPS proxy for Poseidon browser debugging"
-requires-python = ">=3.9,<3.14"
+description = "Rule based local HTTPS proxy for DevRelay browser debugging"
+requires-python = ">=3.10,<3.14"
 dependencies = [
+  "fastapi>=0.110,<1",
   "mitmproxy>=9,<12",
+  "uvicorn[standard]>=0.27,<1",
 ]
 
 [tool.uv]

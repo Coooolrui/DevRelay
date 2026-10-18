@@ -1,8 +1,8 @@
-# Poseidon 本地代理配置手册
+# DevRelay 本地代理配置手册
 
 完整的安装、启动和配置说明请看 [guide.md](./guide.md)。
 
-这个目录是 Poseidon 的本地代理原型。它使用 mitmproxy 接收 Chrome/Edge 的 HTTP 和 HTTPS 请求，按规则把指定请求转发到本地服务。
+这个目录是 DevRelay 的本地代理原型。它使用 mitmproxy 接收 Chrome/Edge 的 HTTP 和 HTTPS 请求，按规则把指定请求转发到本地服务。
 
 典型链路：
 
@@ -61,7 +61,17 @@ https://api.apifox.com/api/v1/project-categories
 http://localhost:7890/v1/project-categories
 ```
 
-### 3. 启动 mitmproxy
+### 3. 启动 DevRelay Web 管理服务
+
+推荐直接启动本地管理页：
+
+```bash
+uv run python devrelay_agent.py
+```
+
+它会自动启动代理并打开 `http://127.0.0.1:8787`，可以在页面中编辑配置、启停代理、查看日志和启动专用浏览器。
+
+### 4. 手动启动 mitmproxy（排错方式）
 
 在第一个终端执行：
 
@@ -69,8 +79,8 @@ http://localhost:7890/v1/project-categories
 cd proxy
 uv run mitmdump \
   -p 8080 \
-  -s poseidon_proxy.py \
-  --set poseidon_config=proxy_config.json
+  -s devrelay_proxy.py \
+  --set devrelay_config=proxy_config.json
 ```
 
 看到 `HTTP(S) proxy listening at *:8080` 后，保持这个终端运行。
@@ -162,7 +172,7 @@ uv run python launch_browser.py \
         "replacement": ""
       },
       "requestHeaders": {
-        "X-Poseidon-Local": "1"
+        "X-DevRelay-Local": "1"
       },
       "removeRequestHeaders": [
         "X-Remote-Only"
@@ -256,7 +266,7 @@ uv run python launch_browser.py \
 
 ```json
 "requestHeaders": {
-  "X-Poseidon-Local": "1",
+  "X-DevRelay-Local": "1",
   "Authorization": "Bearer local-token"
 }
 ```
@@ -446,7 +456,7 @@ uv run python -m unittest discover -s tests -v
 }
 ```
 
-如果前端页面有端口，Origin 也必须带端口，例如 `https://apifox.com:3000`。修改 `poseidon_proxy.py` 后必须重启 mitmproxy；只改 JSON 时下一次请求会自动加载。
+如果前端页面有端口，Origin 也必须带端口，例如 `https://apifox.com:3000`。修改 `devrelay_proxy.py` 后必须重启 mitmproxy；只改 JSON 时下一次请求会自动加载。
 
 ### 本地服务收到了错误的 Host
 

@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DevRelay</title>
+  <style>
+    :root { color-scheme: dark; --bg: #11151a; --panel: #1a2027; --line: #303a45; --text: #edf2f7; --muted: #9ba8b5; --green: #49d17d; --blue: #76a9ff; --red: #ff7979; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 980px; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    header { display: flex; align-items: center; justify-content: space-between; padding: 18px 28px; border-bottom: 1px solid var(--line); background: #151a20; }
+    h1 { margin: 0; font-size: 20px; letter-spacing: .2px; }
+    .subtitle { color: var(--muted); margin-left: 10px; font-size: 13px; }
+    .status { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--red); }
+    .dot.on { background: var(--green); }
+    main { display: grid; grid-template-columns: 380px 1fr; gap: 16px; padding: 20px 28px; }
+    section { border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 18px; }
+    section h2 { margin: 0 0 14px; font-size: 15px; }
+    .wide { grid-column: 1 / -1; }
+    .row { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
+    label { color: var(--muted); min-width: 74px; }
+    input, textarea { width: 100%; border: 1px solid var(--line); border-radius: 4px; background: #101419; color: var(--text); padding: 9px 10px; font: inherit; }
+    textarea { min-height: 430px; resize: vertical; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    button { border: 1px solid var(--line); border-radius: 4px; padding: 8px 12px; background: #252e38; color: var(--text); cursor: pointer; }
+    button:hover { border-color: var(--blue); }
+    button.primary { background: #2b5da8; border-color: #467bc9; }
+    button.danger { color: #ffb2b2; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .hint { color: var(--muted); font-size: 12px; }
+    pre { margin: 0; max-height: 260px; overflow: auto; white-space: pre-wrap; color: #c7d3df; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .message { min-height: 22px; color: var(--blue); margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div><h1>DevRelay <span class="subtitle">本地联调代理</span></h1></div>
+    <div class="status"><span id="dot" class="dot"></span><span id="statusText">读取状态...</span></div>
+  </header>
+  <main>
+    <section>
+      <h2>代理控制</h2>
+      <div class="row"><label>代理地址</label><span>127.0.0.1:<b id="proxyPort">8080</b></span></div>
+      <div class="row"><label>规则数量</label><span id="ruleCount">-</span></div>
+      <div class="row"><label>证书状态</label><span id="certStatus">-</span></div>
+      <div class="actions">
+        <button class="primary" onclick="proxyAction('start')">启动代理</button>
+        <button class="danger" onclick="proxyAction('stop')">停止代理</button>
+      </div>
+      <div class="message" id="message"></div>
+    </section>
+    <section>
+      <h2>启动联调浏览器</h2>
+      <div class="row"><label>页面地址</label><input id="browserUrl" value="https://apifox.com"></div>
+      <div class="actions">
+        <button class="primary" onclick="launchBrowser('chrome')">启动 Chrome</button>
+        <button onclick="launchBrowser('edge')">启动 Edge</button>
+        <button onclick="launchBrowser('chrome', 'http://mitm.it')">打开证书页</button>
+      </div>
+      <p class="hint">浏览器使用独立 profile，不影响日常浏览器。</p>
+    </section>
+    <section class="wide">
+      <h2>代理配置 JSON</h2>
+      <textarea id="config"></textarea>
+      <div class="actions" style="margin-top:10px">
+        <button class="primary" onclick="saveConfig()">保存配置</button>
+        <button onclick="loadConfig()">重新加载</button>
+      </div>
+    </section>
+    <section class="wide">
+      <h2>运行日志</h2>
+      <pre id="logs">暂无日志</pre>
+    </section>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    async function request(url, options) {
+      const response = await fetch(url, options);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || '请求失败');
+      return data;
+    }
+    function showMessage(text, error = false) { $('message').textContent = text; $('message').style.color = error ? 'var(--red)' : 'var(--blue)'; }
+    async function refreshStatus() {
+      try {
+        const data = await request('/api/status');
+        $('dot').classList.toggle('on', data.running);
+        $('statusText').textContent = data.running ? `代理运行中 · PID ${data.pid}` : '代理已停止';
+        $('proxyPort').textContent = data.proxyPort;
+        $('ruleCount').textContent = data.rules;
+        $('certStatus').textContent = data.certificateReady ? '已生成，请确认系统已信任' : '未生成，先启动代理';
+      } catch (error) { showMessage(error.message, true); }
+    }
+    async function proxyAction(action) {
+      try { await request(`/api/proxy/${action}`, { method: 'POST' }); showMessage(action === 'start' ? '代理已启动' : '代理已停止'); refreshStatus(); refreshLogs(); }
+      catch (error) { showMessage(error.message, true); }
+    }
+    async function loadConfig() {
+      try { $('config').value = JSON.stringify(await request('/api/config'), null, 2); showMessage('配置已加载'); refreshStatus(); }
+      catch (error) { showMessage(error.message, true); }
+    }
+    async function saveConfig() {
+      try { const config = JSON.parse($('config').value); await request('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) }); showMessage('配置已保存'); refreshStatus(); }
+      catch (error) { showMessage(error.message || 'JSON 格式错误', true); }
+    }
+    async function launchBrowser(browser, forcedUrl) {
+      const url = forcedUrl || $('browserUrl').value;
+      try { await request(`/api/browser/${browser}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) }); showMessage(`${browser} 已启动`); refreshLogs(); }
+      catch (error) { showMessage(error.message, true); }
+    }
+    async function refreshLogs() { try { $('logs').textContent = (await request('/api/logs')).logs.join('\n') || '暂无日志'; } catch (_) {} }
+    loadConfig(); refreshStatus(); refreshLogs();
+    setInterval(() => { refreshStatus(); refreshLogs(); }, 2000);
+  </script>
+</body>
+</html>
