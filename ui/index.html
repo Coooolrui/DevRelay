@@ -175,5 +175,72 @@
     async function init() { onboarding = await request('/api/onboarding'); await loadConfig(); const firstPending = steps.findIndex((step) => onboarding.steps[step.id] !== 'success'); currentStep = firstPending < 0 ? steps.length - 1 : firstPending; await refreshStatus(); renderStep(); if (!onboarding.completed && onboarding.showOnLaunch) { openWizard(); if (currentStep === 0) checkEnvironment(); } }
     init().catch((error) => showMessage(error.message, true)); setInterval(() => { refreshStatus(); refreshLogs(); }, 2500);
   </script>
+  <script>
+    (() => {
+      const methodOptions = [
+        ['', '全部方法'],
+        ['^GET$', 'GET'],
+        ['^POST$', 'POST'],
+        ['^PUT$', 'PUT'],
+        ['^PATCH$', 'PATCH'],
+        ['^DELETE$', 'DELETE'],
+        ['^OPTIONS$', 'OPTIONS（跨域预检）'],
+        ['^HEAD$', 'HEAD'],
+        ['^(GET|POST|PUT|PATCH|DELETE|OPTIONS)$', '常用方法'],
+        ['.*', '全部 HTTP 方法（含扩展方法）'],
+      ];
+      const corsMethods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD', 'CONNECT', 'TRACE'];
+
+      function replaceWithSelect(id, options, multiple = false) {
+        const input = $(id);
+        if (!input || input.tagName === 'SELECT') return $(id);
+        const select = document.createElement('select');
+        select.id = id;
+        select.className = input.className;
+        select.multiple = multiple;
+        select.size = multiple ? 1 : 0;
+        if (input.getAttribute('aria-label')) select.setAttribute('aria-label', input.getAttribute('aria-label'));
+        options.forEach(([value, label]) => select.add(new Option(label, value)));
+        input.replaceWith(select);
+        return select;
+      }
+
+      const matchMethod = replaceWithSelect('mainMatchMethod', methodOptions);
+      const corsMethod = replaceWithSelect('mainCorsMethods', corsMethods.map((method) => [method, method]), true);
+      if (corsMethod) corsMethod.title = '可多选允许的方法';
+
+      function selectMatchMethod(value) {
+        if (!matchMethod) return;
+        const known = [...matchMethod.options].some((option) => option.value === value);
+        if (!known && value) matchMethod.add(new Option(`自定义：${value}`, value));
+        matchMethod.value = value || '';
+      }
+
+      function selectCorsMethods(value) {
+        if (!corsMethod) return;
+        const values = String(value || '').split(',').map((item) => item.trim()).filter(Boolean);
+        values.filter((item) => ![...corsMethod.options].some((option) => option.value === item)).forEach((item) => corsMethod.add(new Option(`自定义：${item}`, item)));
+        [...corsMethod.options].forEach((option) => { option.selected = values.includes(option.value); });
+      }
+
+      function readCorsMethods() {
+        return corsMethod ? [...corsMethod.selectedOptions].map((option) => option.value).join(', ') : '';
+      }
+
+      const originalFillMainRule = fillMainRule;
+      fillMainRule = function(rule) {
+        originalFillMainRule(rule);
+        selectMatchMethod((rule.match || {}).method || '');
+        selectCorsMethods((rule.cors || {}).allowMethods || 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+      };
+
+      const originalMainRuleFromForm = mainRuleFromForm;
+      mainRuleFromForm = function() {
+        const rule = originalMainRuleFromForm();
+        if (corsMethod && rule.cors && rule.cors.enabled) rule.cors.allowMethods = readCorsMethods();
+        return rule;
+      };
+    })();
+  </script>
 </body>
 </html>
