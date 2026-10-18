@@ -2,7 +2,7 @@
 
 完整的安装、启动和配置说明请看 [guide.md](./guide.md)。
 
-这个目录是 DevRelay 的本地代理原型。它使用 mitmproxy 接收 Chrome/Edge 的 HTTP 和 HTTPS 请求，按规则把指定请求转发到本地服务。
+这个目录是 DevRelay 的本地代理原型。它使用 mitmproxy 接收 Chrome/Edge 的 HTTP、HTTPS、WebSocket 和长连接请求，按规则把指定请求转发到本地服务。
 
 典型链路：
 
@@ -49,7 +49,7 @@ http://localhost:7890
 
 ### 2. 配置规则
 
-编辑 [proxy_config.json](./proxy_config.json)。当前示例将：
+编辑 [proxy_config.yml](./proxy_config.yml)。当前示例将：
 
 ```text
 https://api.apifox.com/api/v1/project-categories
@@ -69,7 +69,7 @@ http://localhost:7890/v1/project-categories
 uv run python devrelay_agent.py
 ```
 
-它会自动启动代理并打开 `http://127.0.0.1:8787`，可以在页面中编辑配置、启停代理、查看日志和启动专用浏览器。
+它只会打开 `http://127.0.0.1:8787` 管理页面，不会自动启动代理。代理由页面中的按钮或初始化向导启动。页面可以编辑 YAML、启停代理、查看日志和启动专用浏览器。
 
 ### 4. 手动启动 mitmproxy（排错方式）
 
@@ -80,7 +80,7 @@ cd proxy
 uv run mitmdump \
   -p 8080 \
   -s devrelay_proxy.py \
-  --set devrelay_config=proxy_config.json
+  --set devrelay_config=proxy_config.yml
 ```
 
 看到 `HTTP(S) proxy listening at *:8080` 后，保持这个终端运行。
@@ -146,49 +146,37 @@ uv run python launch_browser.py \
 
 ## 五、完整配置格式
 
-`proxy_config.json` 的根对象包含 `rules` 数组。规则按数组顺序匹配，第一条命中的规则生效。
+`proxy_config.yml` 的根对象包含 `rules` 数组。规则按数组顺序匹配，第一条命中的规则生效。管理页面的配置编辑器使用 YAML，规则名称可以省略。
 
-```json
-{
-  "rules": [
-    {
-      "name": "apifox-project-categories-to-local",
-      "enabled": true,
-      "match": {
-        "host": "^api\\.apifox\\.com$",
-        "path": "^/api/v1/project-categories(?:$|\\?)",
-        "method": "^(GET|POST|PUT|PATCH|DELETE|OPTIONS)$",
-        "headers": {
-          "X-Environment": "^test$"
-        }
-      },
-      "target": {
-        "scheme": "http",
-        "host": "localhost",
-        "port": 7890
-      },
-      "rewritePath": {
-        "pattern": "^/api",
-        "replacement": ""
-      },
-      "requestHeaders": {
-        "X-DevRelay-Local": "1"
-      },
-      "removeRequestHeaders": [
-        "X-Remote-Only"
-      ],
-      "preserveHost": false,
-      "cors": {
-        "enabled": true,
-        "allowOrigin": "https://apifox.com",
-        "allowCredentials": true,
-        "allowMethods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-        "allowHeaders": "Content-Type, Authorization, X-Requested-With",
-        "maxAge": 600
-      }
-    }
-  ]
-}
+```yaml
+rules:
+  - name: apifox-project-categories-to-local
+    enabled: true
+    match:
+      host: '^api\.apifox\.com$'
+      path: '^/api/v1/project-categories(?:$|\?)'
+      method: '^(GET|POST|PUT|PATCH|DELETE|OPTIONS)$'
+      headers:
+        X-Environment: '^test$'
+    target:
+      scheme: http
+      host: localhost
+      port: 7890
+    rewritePath:
+      pattern: '^/api'
+      replacement: ''
+    requestHeaders:
+      X-DevRelay-Local: '1'
+    removeRequestHeaders:
+      - X-Remote-Only
+    preserveHost: false
+    cors:
+      enabled: true
+      allowOrigin: 'https://apifox.com'
+      allowCredentials: true
+      allowMethods: 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+      allowHeaders: 'Content-Type, Authorization, X-Requested-With'
+      maxAge: 600
 ```
 
 ### `name`
@@ -199,7 +187,7 @@ uv run python launch_browser.py \
 
 规则开关。设为 `false` 后跳过这条规则：
 
-```json
+```yaml
 "enabled": true
 ```
 
@@ -207,7 +195,7 @@ uv run python launch_browser.py \
 
 匹配请求域名，使用 Python 正则表达式。请求 URL 中的协议和路径不写在这里。
 
-```json
+```yaml
 "host": "^api\\.apifox\\.com$"
 ```
 
@@ -215,7 +203,7 @@ uv run python launch_browser.py \
 
 匹配请求路径，也使用 Python 正则表达式。当前值可能包含查询字符串：
 
-```json
+```yaml
 "path": "^/api/v1/project-categories(?:$|\\?)"
 ```
 
@@ -227,7 +215,7 @@ uv run python launch_browser.py \
 
 按请求头名称匹配正则。名称大小写不敏感，值使用正则匹配：
 
-```json
+```yaml
 "headers": {
   "X-Environment": "^test$"
 }
@@ -237,7 +225,7 @@ uv run python launch_browser.py \
 
 目标本地服务地址：
 
-```json
+```yaml
 "target": {
   "scheme": "http",
   "host": "localhost",
@@ -251,7 +239,7 @@ uv run python launch_browser.py \
 
 在转发前重写路径，只执行一次替换：
 
-```json
+```yaml
 "rewritePath": {
   "pattern": "^/api",
   "replacement": ""
@@ -264,7 +252,7 @@ uv run python launch_browser.py \
 
 给转发到本地的请求增加或覆盖请求头：
 
-```json
+```yaml
 "requestHeaders": {
   "X-DevRelay-Local": "1",
   "Authorization": "Bearer local-token"
@@ -275,7 +263,7 @@ uv run python launch_browser.py \
 
 转发前删除请求头：
 
-```json
+```yaml
 "removeRequestHeaders": [
   "X-Remote-Only"
 ]
@@ -301,7 +289,7 @@ Host: api.apifox.com
 
 `cors.enabled` 是跨域处理开关：
 
-```json
+```yaml
 "cors": {
   "enabled": true
 }
@@ -311,7 +299,7 @@ Host: api.apifox.com
 
 关闭方式：
 
-```json
+```yaml
 "cors": {
   "enabled": false
 }
@@ -323,7 +311,7 @@ Host: api.apifox.com
 
 允许哪个前端来源访问：
 
-```json
+```yaml
 "allowOrigin": "https://apifox.com"
 ```
 
@@ -337,7 +325,7 @@ Host: api.apifox.com
 
 也可以使用：
 
-```json
+```yaml
 "allowOrigin": "$origin"
 ```
 
@@ -345,7 +333,7 @@ Host: api.apifox.com
 
 #### `allowCredentials`
 
-```json
+```yaml
 "allowCredentials": true
 ```
 
@@ -353,14 +341,14 @@ Host: api.apifox.com
 
 当它为 `true` 时，`allowOrigin` 不能写 `*`，必须写具体来源：
 
-```json
+```yaml
 "allowOrigin": "https://apifox.com",
 "allowCredentials": true
 ```
 
 如果不需要凭证，可以允许任意来源：
 
-```json
+```yaml
 "allowOrigin": "*",
 "allowCredentials": false
 ```
@@ -369,7 +357,7 @@ Host: api.apifox.com
 
 允许跨域使用的 HTTP 方法：
 
-```json
+```yaml
 "allowMethods": "GET, POST, PUT, PATCH, DELETE, OPTIONS"
 ```
 
@@ -379,7 +367,7 @@ Host: api.apifox.com
 
 允许跨域请求携带的请求头：
 
-```json
+```yaml
 "allowHeaders": "Content-Type, Authorization, X-Requested-With"
 ```
 
@@ -389,7 +377,7 @@ Host: api.apifox.com
 
 预检结果缓存时间，单位是秒：
 
-```json
+```yaml
 "maxAge": 600
 ```
 
@@ -411,7 +399,7 @@ https://api.apifox.com/api/v1/project-categories
 
 ### WebSocket 和文件上传
 
-WebSocket、文件上传和请求体会随匹配请求一起转发，不需要额外配置。当前版本只修改请求和响应头，不修改响应体。
+WebSocket（`ws` / `wss`）、SSE、文件上传、长连接和请求体会随匹配请求一起转发，不需要额外配置。当前版本只修改请求和响应头，不修改响应体。
 
 ## 七、验证和日志
 
@@ -449,20 +437,20 @@ uv run python -m unittest discover -s tests -v
 
 确认规则中存在：
 
-```json
+```yaml
 "cors": {
   "enabled": true,
   "allowOrigin": "https://apifox.com"
 }
 ```
 
-如果前端页面有端口，Origin 也必须带端口，例如 `https://apifox.com:3000`。修改 `devrelay_proxy.py` 后必须重启 mitmproxy；只改 JSON 时下一次请求会自动加载。
+如果前端页面有端口，Origin 也必须带端口，例如 `https://apifox.com:3000`。修改 `devrelay_proxy.py` 后必须重启 mitmproxy；只改 YAML 时下一次请求会自动加载。
 
 ### 本地服务收到了错误的 Host
 
 普通本地服务使用：
 
-```json
+```yaml
 "preserveHost": false
 ```
 
@@ -475,7 +463,7 @@ uv run python -m unittest discover -s tests -v
 ## 九、当前限制
 
 - 当前是命令行原型，没有桌面配置界面。
-- 规则修改通过 JSON 文件完成。
+- 规则修改通过 YAML 文件或管理页面表单完成。
 - 响应体不会被改写。
 - HTTPS 解密需要在使用的系统中信任 mitmproxy CA。
 - 浏览器启动器只负责启动 Chrome/Edge 和设置代理，不会启动你的业务服务。

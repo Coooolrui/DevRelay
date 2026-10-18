@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 from typing import Any, Mapping
+
+import yaml
 
 
 class ConfigError(ValueError):
@@ -15,16 +16,30 @@ class ConfigError(ValueError):
 def load_config(path: str | Path) -> dict[str, Any]:
     config_path = Path(path)
     try:
-        with config_path.open("r", encoding="utf-8") as config_file:
-            config = json.load(config_file)
+        text = config_path.read_text(encoding="utf-8")
     except FileNotFoundError as exc:
         raise ConfigError(f"配置文件不存在: {config_path}") from exc
-    except json.JSONDecodeError as exc:
-        raise ConfigError(f"配置 JSON 无效: {exc}") from exc
+    return parse_config_text(text, source=config_path)
+
+
+def parse_config_text(text: str, *, source: str | Path = "配置") -> dict[str, Any]:
+    try:
+        config = yaml.safe_load(text) if text.strip() else {}
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"配置 YAML 无效 ({source}): {exc}") from exc
 
     if not isinstance(config, dict) or not isinstance(config.get("rules", []), list):
         raise ConfigError("配置必须是对象，并包含 rules 数组")
     return config
+
+
+def dump_config(config: Mapping[str, Any]) -> str:
+    return yaml.safe_dump(
+        dict(config),
+        allow_unicode=True,
+        sort_keys=False,
+        default_flow_style=False,
+    )
 
 
 def _compile(pattern: str | None, field_name: str) -> re.Pattern[str] | None:

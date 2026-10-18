@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from rules import ConfigError, find_rule, parse_target, rule_matches
+from rules import ConfigError, find_rule, parse_config_text, parse_target, rule_matches
 
 
 class RuleMatchingTest(unittest.TestCase):
@@ -58,6 +58,24 @@ class RuleMatchingTest(unittest.TestCase):
         self.assertEqual(parse_target(self.rule), ("http", "127.0.0.1", 8080))
         with self.assertRaises(ConfigError):
             parse_target({"target": "not-a-target"})
+
+    def test_yaml_configuration_is_parsed(self):
+        config = parse_config_text(
+            "rules:\n"
+            "  - enabled: true\n"
+            "    match:\n"
+            "      host: '^api\\.example\\.com$'\n"
+            "    target:\n"
+            "      scheme: http\n"
+            "      host: localhost\n"
+            "      port: 9000\n"
+        )
+        self.assertEqual(config["rules"][0]["target"]["port"], 9000)
+        self.assertEqual(config["rules"][0]["match"]["host"], r"^api\.example\.com$")
+
+    def test_invalid_yaml_is_rejected(self):
+        with self.assertRaises(ConfigError):
+            parse_config_text("rules: [\n")
 
 
 if __name__ == "__main__":

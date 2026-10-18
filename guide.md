@@ -9,7 +9,7 @@
   -> localhost:7890 (本地业务服务)
 ```
 
-`8080` 是代理服务端口，`7890` 是本地业务服务端口，两个端口必须不同。
+`8080` 是默认代理服务端口，`7890` 是本地业务服务端口，两个端口必须不同。代理端口可以在 Web 管理页的“代理控制”中修改；代理运行时需要先停止代理，保存新端口后再启动。
 
 ## 2. 安装
 
@@ -46,7 +46,7 @@ uv run python devrelay_agent.py
 
 它会自动：
 
-- 启动 mitmproxy 代理服务。
+- 只启动管理页面，不会自动启动 mitmproxy 代理服务。代理由页面中的“启动代理”按钮或初始化向导启动。
 - 打开 `http://127.0.0.1:8787` 管理页面。
 - 提供规则编辑、保存、代理启停、日志和浏览器启动按钮。
 
@@ -58,14 +58,35 @@ uv run python devrelay_agent.py --no-open
 
 终端里的 Agent 进程结束后，代理子进程会被停止；关闭管理页面本身不会停止代理。
 
-### 3.3 手动启动 mitmproxy（排错方式）
+### 3.3 首次初始化向导
+
+第一次打开 `http://127.0.0.1:8787` 时，会自动显示纵向的初始化线路：
+
+```text
+环境 -> 代理 -> 证书 -> 浏览器 -> 规则 -> 服务 -> 测试 -> 完成
+```
+
+向导会引导完成：
+
+1. 检查管理服务和当前配置。
+2. 启动 mitmproxy 代理。
+3. 打开 `http://mitm.it` 并检查 CA 证书是否生成。系统信任证书仍需要在 macOS 或 Windows 中确认一次。
+4. 选择代理端口，启动代理。默认是 `8080`，也可以改成其他未被占用的端口。
+5. 选择 Chrome 或 Edge，启动带独立 profile 的联调浏览器。
+6. 用表单生成第一条规则，或切换到 YAML 编辑完整配置。
+7. 检测本地业务服务地址。
+8. 发送一次测试请求。
+
+完成后进入主控制台。顶部的“初始化向导”按钮可以随时重新打开；完成页的“下次打开时显示初始化向导”开关控制是否在后续启动时自动显示。向导进度保存在本机的 `.devrelay_state.json`，不会写入代理规则。
+
+### 3.4 手动启动 mitmproxy（排错方式）
 
 ```bash
 cd proxy
 uv run mitmdump \
   -p 8080 \
   -s devrelay_proxy.py \
-  --set devrelay_config=proxy_config.json
+  --set devrelay_config=proxy_config.yml
 ```
 
 看到下面的日志后保持终端运行：
@@ -74,9 +95,9 @@ uv run mitmdump \
 HTTP(S) proxy listening at *:8080
 ```
 
-修改 JSON 配置后，代理会在下一次请求时重新读取。修改 Python 代码后必须重启 mitmproxy。
+修改 YAML 配置后，代理会在下一次请求时重新读取。修改 Python 代码后必须重启 mitmproxy。
 
-### 3.4 安装 HTTPS 证书
+### 3.5 安装 HTTPS 证书
 
 在另一个终端启动专用浏览器：
 
@@ -95,7 +116,7 @@ Windows：下载证书，导入“受信任的根证书颁发机构”。
 
 安装后完全退出并重新启动专用浏览器。
 
-### 3.5 启动联调浏览器
+### 3.6 启动联调浏览器
 
 ```bash
 uv run python launch_browser.py \
@@ -110,7 +131,7 @@ Edge 将 `--browser chrome` 换成 `--browser edge`。
 
 ## 4. 当前示例映射
 
-当前 [proxy_config.json](./proxy_config.json) 将：
+当前 [proxy_config.yml](./proxy_config.yml) 将：
 
 ```text
 https://api.apifox.com/api/v1/project-categories
@@ -126,47 +147,37 @@ http://localhost:7890/v1/project-categories
 
 ## 5. 配置文件结构
 
-配置文件是 JSON，根对象必须包含 `rules` 数组。规则按顺序匹配，第一条命中的规则生效。
+配置文件是 YAML，根对象必须包含 `rules` 数组。规则按顺序匹配，第一条命中的规则生效。管理页面的高级编辑器和表单都会保存为 YAML。
 
-```json
-{
-  "rules": [
-    {
-      "name": "api-to-local",
-      "enabled": true,
-      "match": {
-        "host": "^api\\.example\\.com$",
-        "path": "^/api(?:/|$)",
-        "method": "^(GET|POST|PUT|PATCH|DELETE|OPTIONS)$",
-        "headers": {
-          "X-Environment": "^test$"
-        }
-      },
-      "target": {
-        "scheme": "http",
-        "host": "localhost",
-        "port": 9000
-      },
-      "rewritePath": {
-        "pattern": "^/api",
-        "replacement": ""
-      },
-      "requestHeaders": {
-        "X-DevRelay-Local": "1"
-      },
-      "removeRequestHeaders": ["X-Remote-Only"],
-      "preserveHost": false,
-      "cors": {
-        "enabled": true,
-        "allowOrigin": "https://example.com",
-        "allowCredentials": true,
-        "allowMethods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-        "allowHeaders": "Content-Type, Authorization, X-Requested-With",
-        "maxAge": 600
-      }
-    }
-  ]
-}
+```yaml
+rules:
+  - name: api-to-local
+    enabled: true
+    match:
+      host: '^api\.example\.com$'
+      path: '^/api(?:/|$)'
+      method: '^(GET|POST|PUT|PATCH|DELETE|OPTIONS)$'
+      headers:
+        X-Environment: '^test$'
+    target:
+      scheme: http
+      host: localhost
+      port: 9000
+    rewritePath:
+      pattern: '^/api'
+      replacement: ''
+    requestHeaders:
+      X-DevRelay-Local: '1'
+    removeRequestHeaders:
+      - X-Remote-Only
+    preserveHost: false
+    cors:
+      enabled: true
+      allowOrigin: 'https://example.com'
+      allowCredentials: true
+      allowMethods: 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+      allowHeaders: 'Content-Type, Authorization, X-Requested-With'
+      maxAge: 600
 ```
 
 ### 5.1 `match`
@@ -186,7 +197,7 @@ http://localhost:7890/v1/project-categories
 
 在转发前执行一次正则替换：
 
-```json
+```yaml
 "rewritePath": {
   "pattern": "^/api",
   "replacement": ""
@@ -199,7 +210,7 @@ http://localhost:7890/v1/project-categories
 
 增加或覆盖请求头：
 
-```json
+```yaml
 "requestHeaders": {
   "Authorization": "Bearer local-token"
 }
@@ -207,13 +218,13 @@ http://localhost:7890/v1/project-categories
 
 删除请求头：
 
-```json
+```yaml
 "removeRequestHeaders": ["X-Remote-Only"]
 ```
 
 ### 5.5 `preserveHost`
 
-```json
+```yaml
 "preserveHost": false
 ```
 
@@ -225,7 +236,7 @@ http://localhost:7890/v1/project-categories
 
 启用：
 
-```json
+```yaml
 "cors": {
   "enabled": true
 }
@@ -235,7 +246,7 @@ http://localhost:7890/v1/project-categories
 
 关闭：
 
-```json
+```yaml
 "cors": {
   "enabled": false
 }
@@ -245,7 +256,7 @@ http://localhost:7890/v1/project-categories
 
 ### 6.2 CORS 字段
 
-```json
+```yaml
 "cors": {
   "enabled": true,
   "allowOrigin": "https://apifox.com",
@@ -264,7 +275,7 @@ http://localhost:7890/v1/project-categories
 
 如果不需要 Cookie，可以允许任意来源：
 
-```json
+```yaml
 "allowOrigin": "*",
 "allowCredentials": false
 ```
@@ -283,8 +294,9 @@ Access-Control-Allow-Credentials: true
 ## 7. 支持范围
 
 - HTTP 和 HTTPS 请求。
-- WebSocket。
-- 文件上传和普通请求体。
+- WebSocket：`ws` 和 `wss`。
+- SSE（Server-Sent Events）和其他 HTTP 长连接。
+- 文件上传、普通请求体和请求头。
 - 请求头增加、覆盖和删除。
 - 按域名、路径、方法、请求头正则匹配。
 - 请求路径正则重写。

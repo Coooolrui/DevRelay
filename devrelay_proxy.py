@@ -15,7 +15,7 @@ from rules import ConfigError, find_rule, load_config, parse_target
 
 class DevRelayProxy:
     def __init__(self) -> None:
-        self.config_path = Path("proxy_config.json")
+        self.config_path = Path("proxy_config.yml")
         self.config: dict[str, Any] = {"rules": []}
         self.config_mtime_ns: int | None = None
 
@@ -23,8 +23,8 @@ class DevRelayProxy:
         loader.add_option(
             name="devrelay_config",
             typespec=str,
-            default="proxy_config.json",
-            help="DevRelay proxy JSON configuration path",
+            default="proxy_config.yml",
+            help="DevRelay proxy YAML configuration path",
         )
 
     def configure(self, updated: set[str]) -> None:

@@ -9,6 +9,8 @@ import shutil
 import subprocess
 import sys
 import threading
+import urllib.error
+import urllib.request
 import webbrowser
 from collections import deque
 from pathlib import Path
@@ -18,22 +20,94 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
-from rules import ConfigError, load_config
+from rules import ConfigError, dump_config, load_config, parse_config_text
 
 
 BASE_DIR = Path(__file__).resolve().parent
-DEFAULT_CONFIG = BASE_DIR / "proxy_config.json"
+DEFAULT_CONFIG = BASE_DIR / "proxy_config.yml"
+DEFAULT_STATE = BASE_DIR / ".devrelay_state.json"
 UI_FILE = BASE_DIR / "ui" / "index.html"
 
 
 class AgentManager:
     def __init__(self) -> None:
         self.config_path = DEFAULT_CONFIG
+        self.state_path = DEFAULT_STATE
         self.proxy_port = 8080
         self.process: subprocess.Popen[str] | None = None
         self.browser_processes: list[subprocess.Popen[Any]] = []
         self.logs: deque[str] = deque(maxlen=300)
         self.lock = threading.RLock()
+
+    def onboarding(self) -> dict[str, Any]:
+        """Return persisted onboarding preferences without making the UI state implicit."""
+        with self.lock:
+            state = self._read_state()
+            state.setdefault("showOnLaunch", True)
+            state.setdefault("completed", False)
+            state.setdefault("steps", {})
+            state.setdefault("proxyPort", self.proxy_port)
+            return state
+
+    def save_onboarding(self, state: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(state, dict):
+            raise ValueError("初始化状态必须是对象")
+        current = self.onboarding()
+        current.update({
+            "showOnLaunch": bool(state.get("showOnLaunch", current["showOnLaunch"])),
+            "completed": bool(state.get("completed", current["completed"])),
+            "steps": state.get("steps", current["steps"]),
+        })
+        if not isinstance(current["steps"], dict):
+            raise ValueError("初始化步骤状态必须是对象")
+        self.state_path.write_text(
+            json.dumps(current, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        return current
+
+    def reset_onboarding(self) -> dict[str, Any]:
+        return self.save_onboarding({"completed": False, "steps": {}})
+
+    def set_proxy_port(self, value: Any) -> dict[str, Any]:
+        if self.process is not None and self.process.poll() is None:
+            raise RuntimeError("代理运行中，请先停止代理再修改端口")
+        try:
+            port = int(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("代理端口必须是数字") from exc
+        if not 1 <= port <= 65535:
+            raise ValueError("代理端口必须在 1 到 65535 之间")
+        self.proxy_port = port
+        state = self.onboarding()
+        state["proxyPort"] = port
+        self.state_path.write_text(
+            json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        self._append_log(f"设置代理端口: {port}")
+        return self.status()
+
+    def check_local_service(self, url: str, timeout: float = 3.0) -> dict[str, Any]:
+        if not isinstance(url, str) or not url.strip():
+            raise ValueError("本地服务地址不能为空")
+        target = url.strip()
+        if not target.startswith(("http://", "https://")):
+            target = "http://" + target
+        request = urllib.request.Request(target, method="GET")
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                return {"reachable": True, "status": response.status, "url": target}
+        except urllib.error.HTTPError as exc:
+            # HTTP 4xx/5xx still prove that the local server is reachable.
+            return {"reachable": True, "status": exc.code, "url": target}
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            return {"reachable": False, "url": target, "error": str(exc.reason if isinstance(exc, urllib.error.URLError) else exc)}
+
+    def _read_state(self) -> dict[str, Any]:
+        try:
+            value = json.loads(self.state_path.read_text(encoding="utf-8"))
+            return value if isinstance(value, dict) else {}
+        except (OSError, json.JSONDecodeError):
+            return {}
 
     def status(self) -> dict[str, Any]:
         with self.lock:
@@ -100,9 +174,30 @@ class AgentManager:
             raise ConfigError("配置必须是对象，并包含 rules 数组")
         temporary = self.config_path.with_suffix(".tmp")
         temporary.write_text(
-            json.dumps(config, ensure_ascii=False, indent=2) + "\n",
+            dump_config(config),
             encoding="utf-8",
         )
+        try:
+            load_config(temporary)
+            os.replace(temporary, self.config_path)
+        except Exception:
+            temporary.unlink(missing_ok=True)
+            raise
+        self._append_log(f"保存配置: {len(config['rules'])} 条规则")
+        return config
+
+    def read_config_text(self) -> str:
+        try:
+            return self.config_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise ConfigError(f"读取配置失败: {exc}") from exc
+
+    def save_config_text(self, text: str) -> dict[str, Any]:
+        if not isinstance(text, str):
+            raise ConfigError("配置内容必须是 YAML 文本")
+        config = parse_config_text(text, source=self.config_path)
+        temporary = self.config_path.with_suffix(".tmp")
+        temporary.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
         try:
             load_config(temporary)
             os.replace(temporary, self.config_path)
@@ -164,15 +259,68 @@ def get_status() -> dict[str, Any]:
     return manager.status()
 
 
+@app.get("/api/onboarding")
+def get_onboarding() -> dict[str, Any]:
+    return manager.onboarding()
+
+
+@app.put("/api/onboarding")
+def put_onboarding(state: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return manager.save_onboarding(state)
+    except (OSError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/onboarding/reset")
+def reset_onboarding() -> dict[str, Any]:
+    try:
+        return manager.reset_onboarding()
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/local-service/check")
+def check_local_service(payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return manager.check_local_service(str(payload.get("url", "")))
+    except (OSError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.put("/api/settings")
+def put_settings(settings: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return manager.set_proxy_port(settings.get("proxyPort"))
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/api/config")
 def get_config() -> dict[str, Any]:
     return manager._read_config()
+
+
+@app.get("/api/config/raw")
+def get_config_raw() -> dict[str, str]:
+    try:
+        return {"format": "yaml", "text": manager.read_config_text()}
+    except ConfigError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.put("/api/config")
 def put_config(config: dict[str, Any]) -> dict[str, Any]:
     try:
         return manager.save_config(config)
+    except (ConfigError, OSError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.put("/api/config/raw")
+def put_config_raw(payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return manager.save_config_text(payload.get("text", ""))
     except (ConfigError, OSError, TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -209,16 +357,22 @@ def start_browser(browser: str, payload: dict[str, str]) -> dict[str, str]:
 def main() -> None:
     parser = argparse.ArgumentParser(description="DevRelay local web manager")
     parser.add_argument("--web-port", type=int, default=8787)
-    parser.add_argument("--proxy-port", type=int, default=8080)
+    parser.add_argument("--proxy-port", type=int, default=None)
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
-    parser.add_argument("--no-proxy", action="store_true")
     parser.add_argument("--no-open", action="store_true")
     args = parser.parse_args()
 
     manager.config_path = args.config.expanduser().resolve()
-    manager.proxy_port = args.proxy_port
-    if not args.no_proxy:
-        manager.start_proxy()
+    saved_state = manager._read_state()
+    saved_port = saved_state.get("proxyPort", 8080)
+    if args.proxy_port is None:
+        try:
+            saved_port = int(saved_port)
+        except (TypeError, ValueError):
+            saved_port = 8080
+        if not 1 <= saved_port <= 65535:
+            saved_port = 8080
+    manager.proxy_port = args.proxy_port if args.proxy_port is not None else saved_port
     if not args.no_open:
         threading.Timer(
             1.0,

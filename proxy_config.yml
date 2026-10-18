@@ -1,0 +1,21 @@
+rules:
+- name: api-apifox-com-to-local
+  enabled: true
+  match:
+    host: ^api\.apifox\.com$
+    path: ^/api(?:/|$)
+    method: ^(GET|POST|PUT|PATCH|DELETE|OPTIONS)$
+  target:
+    scheme: http
+    host: localhost
+    port: 7890
+  preserveHost: false
+  rewritePath:
+    pattern: ^/api
+    replacement: ''
+  cors:
+    enabled: true
+    allowOrigin: $origin
+    allowCredentials: true
+    allowMethods: GET, POST, PUT, PATCH, DELETE, OPTIONS
+    allowHeaders: Content-Type, Authorization, X-Requested-With

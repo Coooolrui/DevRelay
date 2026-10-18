@@ -5,112 +5,111 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DevRelay</title>
   <style>
-    :root { color-scheme: dark; --bg: #11151a; --panel: #1a2027; --line: #303a45; --text: #edf2f7; --muted: #9ba8b5; --green: #49d17d; --blue: #76a9ff; --red: #ff7979; }
+    :root { color-scheme: dark; --bg: #101419; --panel: #171d24; --line: #35414d; --text: #edf2f7; --muted: #9ba8b5; --green: #4bd385; --blue: #75a9ff; --red: #ff7777; }
     * { box-sizing: border-box; }
-    body { margin: 0; min-width: 980px; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    header { display: flex; align-items: center; justify-content: space-between; padding: 18px 28px; border-bottom: 1px solid var(--line); background: #151a20; }
-    h1 { margin: 0; font-size: 20px; letter-spacing: .2px; }
-    .subtitle { color: var(--muted); margin-left: 10px; font-size: 13px; }
-    .status { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); }
-    .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--red); }
-    .dot.on { background: var(--green); }
-    main { display: grid; grid-template-columns: 380px 1fr; gap: 16px; padding: 20px 28px; }
-    section { border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 18px; }
-    section h2 { margin: 0 0 14px; font-size: 15px; }
-    .wide { grid-column: 1 / -1; }
-    .row { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
-    label { color: var(--muted); min-width: 74px; }
-    input, textarea { width: 100%; border: 1px solid var(--line); border-radius: 4px; background: #101419; color: var(--text); padding: 9px 10px; font: inherit; }
-    textarea { min-height: 430px; resize: vertical; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
-    button { border: 1px solid var(--line); border-radius: 4px; padding: 8px 12px; background: #252e38; color: var(--text); cursor: pointer; }
-    button:hover { border-color: var(--blue); }
-    button.primary { background: #2b5da8; border-color: #467bc9; }
-    button.danger { color: #ffb2b2; }
-    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
-    .hint { color: var(--muted); font-size: 12px; }
+    [hidden] { display: none !important; }
+    body { margin: 0; min-width: 320px; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 28px; border-bottom: 1px solid var(--line); background: #141a20; }
+    h1, h2, h3, p { margin-top: 0; } h1 { margin-bottom: 0; font-size: 20px; } h2 { margin-bottom: 14px; font-size: 16px; } h3 { margin-bottom: 6px; font-size: 15px; }
+    .subtitle, .hint, .muted { color: var(--muted); font-size: 12px; } .subtitle { margin-left: 8px; }
+    .status { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); white-space: nowrap; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--red); } .dot.on { background: var(--green); }
+    main { max-width: 1180px; margin: 0 auto; padding: 24px 28px; } .dashboard { display: grid; grid-template-columns: 360px 1fr; gap: 16px; }
+    section { border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 18px; } .wide { grid-column: 1 / -1; }
+    .row { display: flex; gap: 10px; align-items: center; margin: 10px 0; } label { color: var(--muted); min-width: 84px; }
+    input, textarea, select { width: 100%; border: 1px solid var(--line); border-radius: 4px; background: #101419; color: var(--text); padding: 9px 10px; font: inherit; }
+    textarea { min-height: 320px; resize: vertical; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    button { border: 1px solid var(--line); border-radius: 4px; padding: 8px 12px; background: #252e38; color: var(--text); cursor: pointer; } button:hover { border-color: var(--blue); }
+    button.primary { background: #2b5da8; border-color: #467bc9; } button.danger { color: #ffb2b2; } button.ghost { background: transparent; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; } .message { min-height: 22px; color: var(--blue); margin-top: 8px; }
     pre { margin: 0; max-height: 260px; overflow: auto; white-space: pre-wrap; color: #c7d3df; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .message { min-height: 22px; color: var(--blue); margin-top: 8px; }
+    .wizard-backdrop { position: fixed; inset: 0; z-index: 10; overflow: auto; padding: 30px 16px; background: rgba(8, 11, 15, .82); }
+    .wizard { width: min(920px, 100%); margin: 0 auto; border: 1px solid #465361; border-radius: 8px; background: #151b22; box-shadow: 0 18px 70px rgba(0,0,0,.45); }
+    .wizard-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 24px 28px 18px; border-bottom: 1px solid var(--line); }
+    .wizard-head h2 { margin: 0 0 5px; font-size: 22px; } .wizard-head p { margin: 0; color: var(--muted); }
+    .wizard-body { display: grid; grid-template-columns: 205px 1fr; gap: 28px; padding: 24px 28px 28px; }
+    .metro { position: relative; padding: 4px 0; } .metro:before { content: ""; position: absolute; left: 17px; top: 20px; bottom: 20px; width: 3px; background: #344555; }
+    .metro-item { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 0; border: 0; background: transparent; color: var(--muted); text-align: left; }
+    .metro-item .station { z-index: 1; display: grid; place-items: center; width: 36px; height: 36px; border: 3px solid #536477; border-radius: 50%; background: #151b22; font-weight: 700; }
+    .metro-item.active { color: var(--text); } .metro-item.active .station { border-color: var(--blue); color: var(--blue); } .metro-item.success .station { border-color: var(--green); color: var(--green); }
+    .metro-item.error .station { border-color: var(--red); color: var(--red); } .metro-item strong { display: block; font-weight: 600; } .metro-item small { display: block; color: inherit; opacity: .8; }
+    .wizard-content { min-height: 410px; } .step-panel { display: none; } .step-panel.active { display: block; }
+    .step-title { margin-bottom: 4px; font-size: 20px; } .step-copy { margin: 0 0 20px; color: var(--muted); }
+    .wizard-foot { display: flex; justify-content: space-between; gap: 12px; padding-top: 20px; margin-top: 24px; border-top: 1px solid var(--line); }
+    .check-result { margin-top: 14px; padding: 11px 12px; border-left: 3px solid var(--line); background: #11171d; color: var(--muted); } .check-result.ok { border-color: var(--green); color: var(--green); } .check-result.fail { border-color: var(--red); color: var(--red); }
+    .tabs { display: flex; gap: 4px; margin-bottom: 12px; } .tabs button.active { border-color: var(--blue); color: var(--blue); }
+    .rule-builder { max-width: 680px; }
+    .field { margin: 0 0 16px; } .field label { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; color: var(--text); } .optional { color: var(--muted); font-size: 11px; font-weight: 400; }
+    .info { position: relative; width: 18px; height: 18px; padding: 0; border: 1px solid #607286; border-radius: 50%; background: transparent; color: var(--muted); font-size: 11px; line-height: 16px; text-align: center; }
+    .info:hover, .info:focus-visible { border-color: var(--blue); color: var(--blue); outline: none; }
+    .info::after { content: attr(data-tip); position: absolute; z-index: 20; top: 24px; left: 0; display: none; width: 250px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 4px; background: #0d1217; color: var(--text); font-size: 12px; font-weight: 400; line-height: 1.45; text-align: left; box-shadow: 0 8px 22px rgba(0,0,0,.35); }
+    .info:hover::after, .info:focus-visible::after { display: block; } .field select { width: 100%; }
+    .settings { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; } .settings input { width: auto; }
+    @media (max-width: 760px) { header { padding: 16px; } main { padding: 16px; } .dashboard { grid-template-columns: 1fr; } .wizard-body { grid-template-columns: 1fr; gap: 14px; padding: 18px; } .wizard-head { padding: 20px 18px 16px; } .wizard-head h2 { font-size: 19px; } .wizard-content { min-height: 0; } }
   </style>
 </head>
 <body>
   <header>
     <div><h1>DevRelay <span class="subtitle">本地联调代理</span></h1></div>
-    <div class="status"><span id="dot" class="dot"></span><span id="statusText">读取状态...</span></div>
+    <div class="status"><span id="dot" class="dot"></span><span id="statusText">读取状态...</span><button class="ghost" onclick="openWizard()">初始化向导</button></div>
   </header>
   <main>
-    <section>
-      <h2>代理控制</h2>
-      <div class="row"><label>代理地址</label><span>127.0.0.1:<b id="proxyPort">8080</b></span></div>
-      <div class="row"><label>规则数量</label><span id="ruleCount">-</span></div>
-      <div class="row"><label>证书状态</label><span id="certStatus">-</span></div>
-      <div class="actions">
-        <button class="primary" onclick="proxyAction('start')">启动代理</button>
-        <button class="danger" onclick="proxyAction('stop')">停止代理</button>
-      </div>
-      <div class="message" id="message"></div>
-    </section>
-    <section>
-      <h2>启动联调浏览器</h2>
-      <div class="row"><label>页面地址</label><input id="browserUrl" value="https://apifox.com"></div>
-      <div class="actions">
-        <button class="primary" onclick="launchBrowser('chrome')">启动 Chrome</button>
-        <button onclick="launchBrowser('edge')">启动 Edge</button>
-        <button onclick="launchBrowser('chrome', 'http://mitm.it')">打开证书页</button>
-      </div>
-      <p class="hint">浏览器使用独立 profile，不影响日常浏览器。</p>
-    </section>
-    <section class="wide">
-      <h2>代理配置 JSON</h2>
-      <textarea id="config"></textarea>
-      <div class="actions" style="margin-top:10px">
-        <button class="primary" onclick="saveConfig()">保存配置</button>
-        <button onclick="loadConfig()">重新加载</button>
-      </div>
-    </section>
-    <section class="wide">
-      <h2>运行日志</h2>
-      <pre id="logs">暂无日志</pre>
-    </section>
+    <div class="dashboard">
+      <section><h2>代理控制</h2><div class="row"><label>代理地址</label><span>127.0.0.1:<b id="proxyPort">8080</b></span></div><div class="row"><label for="proxyPortInput">代理端口</label><input id="proxyPortInput" type="number" min="1" max="65535" value="8080"><button onclick="saveProxyPort()">保存</button></div><div class="row"><label>规则数量</label><span id="ruleCount">-</span></div><div class="row"><label>证书状态</label><span id="certStatus">-</span></div><div class="actions"><button class="primary" onclick="proxyAction('start')">启动代理</button><button class="danger" onclick="proxyAction('stop')">停止代理</button></div><div class="message" id="message"></div></section>
+      <section><h2>启动联调浏览器</h2><div class="row"><label>页面地址</label><input id="browserUrl" value="https://apifox.com"></div><div class="actions"><button class="primary" onclick="launchBrowser('chrome')">启动 Chrome</button><button onclick="launchBrowser('edge')">启动 Edge</button><button onclick="launchBrowser('chrome', 'http://mitm.it')">打开证书页</button></div><p class="hint">浏览器使用独立 profile，不影响日常浏览器。</p></section>
+      <section class="wide"><h2>代理配置 YAML</h2><p class="hint">高级编辑器使用 YAML。保存前会检查格式，规则按文件中的顺序匹配。</p><textarea id="config" spellcheck="false"></textarea><div class="actions" style="margin-top:10px"><button class="primary" onclick="saveConfig()">保存 YAML</button><button onclick="loadConfig()">重新加载</button></div></section>
+      <section class="wide"><h2>运行日志</h2><pre id="logs">暂无日志</pre></section>
+    </div>
   </main>
+
+  <div id="wizardBackdrop" class="wizard-backdrop" hidden><div class="wizard" role="dialog" aria-modal="true" aria-labelledby="wizardTitle">
+    <div class="wizard-head"><div><h2 id="wizardTitle">欢迎使用 DevRelay</h2><p>沿着这条线路完成一次初始化，之后可以从页面顶部重新打开。</p></div><button class="ghost" onclick="closeWizard()">稍后处理</button></div>
+    <div class="wizard-body"><nav id="metro" class="metro" aria-label="初始化进度"></nav><div class="wizard-content">
+      <div id="step-environment" class="step-panel"><h3 class="step-title">检查运行环境</h3><p class="step-copy">确认管理服务已经启动，并读取当前代理和配置状态。</p><div id="environmentResult" class="check-result">等待检查</div><button class="primary" onclick="checkEnvironment()">检查并继续</button></div>
+      <div id="step-proxy" class="step-panel"><h3 class="step-title">启动代理</h3><p class="step-copy">DevRelay 会在本机启动代理端口，联调浏览器的流量将从这里经过。</p><div class="row"><label for="wizardProxyPort">监听端口</label><input id="wizardProxyPort" type="number" min="1" max="65535" value="8080"></div><button class="primary" onclick="wizardStartProxy()">应用端口并启动</button><div id="proxyResult" class="check-result">等待启动</div></div>
+      <div id="step-certificate" class="step-panel"><h3 class="step-title">安装 HTTPS 证书</h3><p class="step-copy">打开 mitmproxy 证书页，在当前联调浏览器中完成一次信任。证书只用于解密 HTTPS 流量。</p><div id="certificateResult" class="check-result">等待检查</div><div class="actions"><button class="primary" onclick="openCertificatePage()">打开证书页</button><button onclick="checkCertificate()">重新检查</button></div></div>
+      <div id="step-browser" class="step-panel"><h3 class="step-title">启动联调浏览器</h3><p class="step-copy">选择浏览器。DevRelay 会使用独立 profile，不会改动日常浏览器。</p><div class="row"><label>浏览器</label><select id="wizardBrowser"><option value="chrome">Chrome</option><option value="edge">Edge</option></select></div><div class="row"><label>页面地址</label><input id="wizardBrowserUrl" value="https://apifox.com"></div><button class="primary" onclick="wizardLaunchBrowser()">启动并继续</button><div id="browserResult" class="check-result">等待启动</div></div>
+      <div id="step-rule" class="step-panel"><h3 class="step-title">配置第一条规则</h3><p class="step-copy">常用配置用表单完成；需要高级字段时切到 YAML。</p><div class="tabs"><button id="formTab" class="active" onclick="switchRuleTab('form')">表单</button><button id="yamlTab" onclick="switchRuleTab('yaml')">YAML</button></div><div id="ruleForm" class="rule-builder"><div class="field"><label for="ruleName">规则名称 <span class="optional">可选</span><button type="button" class="info" aria-label="规则名称说明" data-tip="只用于日志识别。留空时会自动生成随机名称，例如 rule-a7f3c91d。">!</button></label><input id="ruleName" placeholder="例如：apifox-project-categories"></div><div class="field"><label for="ruleHost">远程域名<button type="button" class="info" aria-label="远程域名说明" data-tip="填写要匹配的目标域名，只写域名，不要带协议和路径。支持 HTTP、HTTPS、WS、WSS 请求；这里只按域名匹配。">!</button></label><input id="ruleHost" value="^api\.example\.com$" placeholder="例如：^api\\.example\\.com$"></div><div class="field"><label for="rulePath">远程路径<button type="button" class="info" aria-label="远程路径说明" data-tip="填写要匹配的 URL 路径，支持正则；留空表示匹配任意路径。HTTP、HTTPS、WS、WSS 请求都使用同样的路径匹配。">!</button></label><input id="rulePath" value="^/api(?:/|$)" placeholder="例如：^/api(?:/|$)"></div><div class="field"><label for="ruleMethod">请求方法<button type="button" class="info" aria-label="请求方法说明" data-tip="选择这条规则处理哪种 HTTP 请求。跨域调用通常需要保留 OPTIONS。">!</button></label><select id="ruleMethod"><option value="ALL">全部方法（推荐）</option><option value="GET">GET：读取数据</option><option value="POST">POST：创建或提交</option><option value="PUT">PUT：整体更新</option><option value="PATCH">PATCH：部分更新</option><option value="DELETE">DELETE：删除</option><option value="OPTIONS">OPTIONS：跨域预检</option></select></div><div class="field"><label for="ruleTarget">本地服务地址<button type="button" class="info" aria-label="本地服务地址说明" data-tip="请求最终转发到这里，例如 http://localhost:7890。目标协议支持 HTTP 和 HTTPS；WS、WSS、SSE、文件上传和长连接由代理继续转发。">!</button></label><input id="ruleTarget" value="http://localhost:7890" placeholder="例如：http://localhost:7890"></div><div class="field"><label for="ruleRewrite">路径去掉前缀 <span class="optional">可选</span><button type="button" class="info" aria-label="路径重写说明" data-tip="转发前从路径中删除的正则前缀；留空表示保持原路径。">!</button></label><input id="ruleRewrite" value="^/api" placeholder="例如：^/api"></div><label class="settings"><input id="ruleCors" type="checkbox" checked> 启用 CORS 和 OPTIONS 预检<button type="button" class="info" aria-label="CORS 说明" data-tip="为跨域响应补充 CORS 头，并直接处理 OPTIONS 预检请求。">!</button></label><label class="settings"><input id="ruleCredentials" type="checkbox" checked> 允许凭据（Cookie / 登录态）<button type="button" class="info" aria-label="凭据说明" data-tip="允许浏览器携带 Cookie、Authorization 等登录态信息。启用后 allowOrigin 不能使用 *。">!</button></label></div><div id="ruleYaml" hidden><textarea id="wizardConfig" spellcheck="false"></textarea><p class="hint">YAML 根对象需要包含 <code>rules</code> 数组。</p></div><div class="wizard-foot"><span class="hint">规则名称留空会自动生成。</span><button class="primary" onclick="wizardSaveRule()">保存规则并继续</button></div><div id="ruleResult" class="check-result">等待保存</div></div>
+      <div id="step-local" class="step-panel"><h3 class="step-title">检测本地服务</h3><p class="step-copy">填写本地业务服务地址。返回任何 HTTP 状态码都表示端口已经连通。</p><div class="row"><label>服务地址</label><input id="localServiceUrl" value="http://localhost:7890"></div><button class="primary" onclick="checkLocalService()">检测并继续</button><div id="localResult" class="check-result">等待检测</div></div>
+      <div id="step-verification" class="step-panel"><h3 class="step-title">发送测试请求</h3><p class="step-copy">用刚才的地址发送一次 GET 请求，确认本地服务能返回结果。</p><button class="primary" onclick="verifyLocalService()">发送测试请求</button><div id="verificationResult" class="check-result">等待测试</div></div>
+      <div id="step-complete" class="step-panel"><h3 class="step-title">初始化完成</h3><p class="step-copy">DevRelay 已准备好。你可以在主控制台管理代理、规则和日志。</p><div class="check-result ok">线路完成</div><div class="wizard-foot"><label class="settings"><input id="showOnLaunch" type="checkbox" checked> 下次打开时显示初始化向导</label><button class="primary" onclick="finishWizard()">进入主控制台</button></div></div>
+    </div></div>
+  </div></div>
+
   <script>
     const $ = (id) => document.getElementById(id);
-    async function request(url, options) {
-      const response = await fetch(url, options);
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || '请求失败');
-      return data;
-    }
+    const steps = [{ id: 'environment', label: '环境', note: '准备工作' }, { id: 'proxy', label: '代理', note: '启动监听' }, { id: 'certificate', label: '证书', note: '信任 HTTPS' }, { id: 'browser', label: '浏览器', note: '启动联调' }, { id: 'rule', label: '规则', note: '连接本地' }, { id: 'local', label: '服务', note: '检测端口' }, { id: 'verification', label: '测试', note: '发送请求' }, { id: 'complete', label: '完成', note: '开始工作' }];
+    let onboarding = { showOnLaunch: true, completed: false, steps: {} }, currentStep = 0, currentConfig = { rules: [] };
+    async function request(url, options) { const response = await fetch(url, options); const data = await response.json(); if (!response.ok) throw new Error(data.detail || '请求失败'); return data; }
     function showMessage(text, error = false) { $('message').textContent = text; $('message').style.color = error ? 'var(--red)' : 'var(--blue)'; }
-    async function refreshStatus() {
-      try {
-        const data = await request('/api/status');
-        $('dot').classList.toggle('on', data.running);
-        $('statusText').textContent = data.running ? `代理运行中 · PID ${data.pid}` : '代理已停止';
-        $('proxyPort').textContent = data.proxyPort;
-        $('ruleCount').textContent = data.rules;
-        $('certStatus').textContent = data.certificateReady ? '已生成，请确认系统已信任' : '未生成，先启动代理';
-      } catch (error) { showMessage(error.message, true); }
-    }
-    async function proxyAction(action) {
-      try { await request(`/api/proxy/${action}`, { method: 'POST' }); showMessage(action === 'start' ? '代理已启动' : '代理已停止'); refreshStatus(); refreshLogs(); }
-      catch (error) { showMessage(error.message, true); }
-    }
-    async function loadConfig() {
-      try { $('config').value = JSON.stringify(await request('/api/config'), null, 2); showMessage('配置已加载'); refreshStatus(); }
-      catch (error) { showMessage(error.message, true); }
-    }
-    async function saveConfig() {
-      try { const config = JSON.parse($('config').value); await request('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) }); showMessage('配置已保存'); refreshStatus(); }
-      catch (error) { showMessage(error.message || 'JSON 格式错误', true); }
-    }
-    async function launchBrowser(browser, forcedUrl) {
-      const url = forcedUrl || $('browserUrl').value;
-      try { await request(`/api/browser/${browser}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) }); showMessage(`${browser} 已启动`); refreshLogs(); }
-      catch (error) { showMessage(error.message, true); }
-    }
+    function result(id, text, ok = null) { const node = $(id); node.textContent = text; node.className = `check-result ${ok === true ? 'ok' : ok === false ? 'fail' : ''}`; }
+    function renderMetro() { $('metro').innerHTML = steps.map((step, index) => { const state = onboarding.steps[step.id] || (index === currentStep ? 'active' : 'pending'); return `<button class="metro-item ${state}" onclick="goStep(${index})"><span class="station">${state === 'success' ? '✓' : index + 1}</span><span><strong>${step.label}</strong><small>${step.note}</small></span></button>`; }).join(''); }
+    function renderStep() { steps.forEach((step, index) => $(`step-${step.id}`).classList.toggle('active', index === currentStep)); renderMetro(); }
+    async function persistOnboarding() { await request('/api/onboarding', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(onboarding) }); renderMetro(); }
+    function markStep(id, state = 'success') { onboarding.steps[id] = state; const index = steps.findIndex((step) => step.id === id); if (state === 'success' && index < steps.length - 1) currentStep = index + 1; persistOnboarding().catch((error) => showMessage(error.message, true)); renderStep(); }
+    function goStep(index) { const firstPending = steps.findIndex((step) => onboarding.steps[step.id] !== 'success'); const maxReachable = firstPending < 0 ? steps.length - 1 : firstPending; if (index > maxReachable) return; currentStep = index; renderStep(); }
+    function openWizard() { $('wizardBackdrop').hidden = false; renderStep(); }
+    function closeWizard() { $('wizardBackdrop').hidden = true; }
+    async function finishWizard() { onboarding.completed = true; onboarding.steps.complete = 'success'; onboarding.showOnLaunch = $('showOnLaunch').checked; await persistOnboarding(); closeWizard(); showMessage('初始化已完成'); }
+    async function refreshStatus() { try { const data = await request('/api/status'); $('dot').classList.toggle('on', data.running); $('statusText').textContent = data.running ? `代理运行中 · PID ${data.pid}` : '代理已停止'; $('proxyPort').textContent = data.proxyPort; if (document.activeElement !== $('proxyPortInput')) $('proxyPortInput').value = data.proxyPort; if (document.activeElement !== $('wizardProxyPort')) $('wizardProxyPort').value = data.proxyPort; $('ruleCount').textContent = data.rules; $('certStatus').textContent = data.certificateReady ? '已生成' : '未生成'; } catch (error) { showMessage(error.message, true); } }
+    async function saveProxyPort() { try { const data = await request('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ proxyPort: $('proxyPortInput').value }) }); $('proxyPortInput').value = data.proxyPort; showMessage(`代理端口已设置为 ${data.proxyPort}`); refreshStatus(); } catch (error) { showMessage(error.message, true); } }
+    async function proxyAction(action) { try { await request(`/api/proxy/${action}`, { method: 'POST' }); showMessage(action === 'start' ? '代理已启动' : '代理已停止'); refreshStatus(); refreshLogs(); } catch (error) { showMessage(error.message, true); } }
+    async function loadConfig() { try { const [config, raw] = await Promise.all([request('/api/config'), request('/api/config/raw')]); currentConfig = config; $('config').value = raw.text; $('wizardConfig').value = raw.text; refreshStatus(); showMessage('YAML 配置已加载'); } catch (error) { showMessage(error.message, true); } }
+    async function saveConfig() { try { currentConfig = await request('/api/config/raw', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: $('config').value }) }); const raw = await request('/api/config/raw'); $('config').value = raw.text; $('wizardConfig').value = raw.text; showMessage('YAML 配置已保存'); refreshStatus(); } catch (error) { showMessage(error.message || 'YAML 格式错误', true); } }
+    async function launchBrowser(browser, forcedUrl) { const url = forcedUrl || $('browserUrl').value; try { await request(`/api/browser/${browser}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) }); showMessage(`${browser} 已启动`); refreshLogs(); } catch (error) { showMessage(error.message, true); } }
     async function refreshLogs() { try { $('logs').textContent = (await request('/api/logs')).logs.join('\n') || '暂无日志'; } catch (_) {} }
-    loadConfig(); refreshStatus(); refreshLogs();
-    setInterval(() => { refreshStatus(); refreshLogs(); }, 2000);
+    async function wizardStartProxy() { try { const settings = await request('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ proxyPort: $('wizardProxyPort').value }) }); await request('/api/proxy/start', { method: 'POST' }); result('proxyResult', `代理已在 ${settings.proxyHost}:${settings.proxyPort} 启动，可以继续。`, true); await refreshStatus(); markStep('proxy'); } catch (error) { result('proxyResult', error.message, false); } }
+    async function checkCertificate() { try { const data = await request('/api/status'); if (data.certificateReady) { result('certificateResult', '证书文件已生成。若浏览器仍报证书错误，请在证书页完成信任后重试。', true); markStep('certificate'); } else result('certificateResult', '尚未生成，请先启动代理。', false); } catch (error) { result('certificateResult', error.message, false); } }
+    function openCertificatePage() { launchBrowser($('wizardBrowser').value, 'http://mitm.it'); result('certificateResult', '证书页已打开。完成系统信任后点击“重新检查”。'); }
+    async function wizardLaunchBrowser() { try { await launchBrowser($('wizardBrowser').value, $('wizardBrowserUrl').value); result('browserResult', '联调浏览器已启动。', true); markStep('browser'); } catch (error) { result('browserResult', error.message, false); } }
+    function switchRuleTab(tab) { const form = tab === 'form'; $('ruleForm').hidden = !form; $('ruleYaml').hidden = form; $('formTab').classList.toggle('active', form); $('yamlTab').classList.toggle('active', !form); if (!form) $('wizardConfig').value = $('config').value; }
+    function formRule() { const target = $('ruleTarget').value.trim().replace(/\/$/, ''); const parsed = new URL(target); const method = $('ruleMethod').value; const methodPattern = method === 'ALL' ? '^(GET|POST|PUT|PATCH|DELETE|OPTIONS)$' : `^${method}$`; const generatedName = `rule-${crypto.randomUUID().slice(0, 8)}`; const name = $('ruleName').value.trim() || generatedName; $('ruleName').value = name; const rule = { name, enabled: true, match: { host: $('ruleHost').value.trim(), path: $('rulePath').value.trim(), method: methodPattern }, target: { scheme: parsed.protocol.replace(':', ''), host: parsed.hostname, port: Number(parsed.port || (parsed.protocol === 'https:' ? 443 : 80)) }, preserveHost: false }; if ($('ruleRewrite').value.trim()) rule.rewritePath = { pattern: $('ruleRewrite').value.trim(), replacement: '' }; if ($('ruleCors').checked) rule.cors = { enabled: true, allowOrigin: '$origin', allowCredentials: $('ruleCredentials').checked, allowMethods: 'GET, POST, PUT, PATCH, DELETE, OPTIONS', allowHeaders: 'Content-Type, Authorization, X-Requested-With' }; return rule; }
+    async function wizardSaveRule() { try { let nextConfig; let savedName = ''; if (!$('ruleForm').hidden) { const rule = formRule(); savedName = rule.name; nextConfig = { ...currentConfig, rules: [rule, ...(currentConfig.rules || []).slice(1)] }; await request('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(nextConfig) }); } else { nextConfig = await request('/api/config/raw', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: $('wizardConfig').value }) }); } currentConfig = nextConfig; const raw = await request('/api/config/raw'); $('config').value = raw.text; $('wizardConfig').value = raw.text; result('ruleResult', `已保存 ${nextConfig.rules.length} 条规则${savedName ? `：${savedName}` : ''}。`, true); markStep('rule'); refreshStatus(); } catch (error) { result('ruleResult', error.message || 'YAML 格式错误', false); } }
+    async function checkLocalService() { try { const data = await request('/api/local-service/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: $('localServiceUrl').value }) }); if (data.reachable) { result('localResult', `服务可访问，HTTP ${data.status}。`, true); markStep('local'); } else result('localResult', `无法连接：${data.error}`, false); } catch (error) { result('localResult', error.message, false); } }
+    async function verifyLocalService() { try { const data = await request('/api/local-service/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: $('localServiceUrl').value }) }); if (data.reachable) { result('verificationResult', `测试请求完成，HTTP ${data.status}。`, true); markStep('verification'); } else result('verificationResult', `测试请求失败：${data.error}`, false); } catch (error) { result('verificationResult', error.message, false); } }
+    async function checkEnvironment() { try { const data = await request('/api/status'); result('environmentResult', `管理服务正常，已读取 ${data.rules} 条规则。`, true); markStep('environment'); } catch (error) { result('environmentResult', error.message, false); } }
+    async function init() { onboarding = await request('/api/onboarding'); await loadConfig(); const firstPending = steps.findIndex((step) => onboarding.steps[step.id] !== 'success'); currentStep = firstPending < 0 ? steps.length - 1 : firstPending; await refreshStatus(); renderStep(); if (!onboarding.completed && onboarding.showOnLaunch) { openWizard(); if (currentStep === 0) checkEnvironment(); } }
+    init().catch((error) => showMessage(error.message, true)); setInterval(() => { refreshStatus(); refreshLogs(); }, 2500);
   </script>
 </body>
 </html>
