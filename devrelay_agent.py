@@ -343,7 +343,7 @@ class AgentManager:
     def save_config_text(self, text: str) -> dict[str, Any]:
         return self.save_config_file_text(self._active_config_name(), text)["config"]
 
-    def launch_browser(self, browser: str, url: str) -> None:
+    def launch_browser(self, browser: str, url: str = "about:blank") -> None:
         if browser not in {"chrome", "edge"}:
             raise ValueError("浏览器必须是 chrome 或 edge")
         command = [
@@ -558,7 +558,7 @@ def get_logs() -> dict[str, list[str]]:
 
 @app.post("/api/browser/{browser}")
 def start_browser(browser: str, payload: dict[str, str]) -> dict[str, str]:
-    url = payload.get("url", "http://mitm.it")
+    url = payload.get("url") or "about:blank"
     try:
         manager.launch_browser(browser, url)
     except (OSError, ValueError) as exc:

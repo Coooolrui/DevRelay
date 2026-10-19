@@ -39,7 +39,7 @@ def main() -> None:
     parser.add_argument("--proxy-host", default="127.0.0.1")
     parser.add_argument("--proxy-port", type=int, default=8080)
     parser.add_argument("--profile-dir", type=Path, default=Path(".profiles"))
-    parser.add_argument("--url", default="http://mitm.it")
+    parser.add_argument("--url", default="about:blank")
     args = parser.parse_args()
 
     browser = find_browser(args.browser)

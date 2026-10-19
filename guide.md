@@ -65,7 +65,7 @@ uv run python devrelay_agent.py --no-open
 第一次打开 `http://127.0.0.1:8787` 时，会自动显示纵向的初始化线路：
 
 ```text
-环境 -> 代理 -> 证书 -> 浏览器 -> 规则 -> 服务 -> 测试 -> 完成
+环境 -> 代理 -> 证书 -> 完成
 ```
 
 向导会引导完成：
@@ -74,10 +74,7 @@ uv run python devrelay_agent.py --no-open
 2. 启动 mitmproxy 代理。
 3. 打开 `http://mitm.it` 并检查 CA 证书是否生成。系统信任证书仍需要在 macOS 或 Windows 中确认一次。
 4. 选择代理端口，启动代理。默认是 `8080`，也可以改成其他未被占用的端口。
-5. 选择 Chrome 或 Edge，启动带独立 profile 的联调浏览器。
-6. 用表单生成第一条规则，或切换到 YAML 编辑完整配置。
-7. 检测本地业务服务地址。
-8. 发送一次测试请求。
+5. 完成初始化后，按需从主控制台启动 Chrome 或 Edge。浏览器会打开空白页，用户自行输入要访问的目标地址。
 
 完成后进入主控制台。顶部的“初始化向导”按钮可以随时重新打开；完成页的“下次打开时显示初始化向导”开关控制是否在后续启动时自动显示。向导进度保存在本机的 `.devrelay_state.json`，不会写入代理规则。
 
@@ -124,7 +121,7 @@ Windows：下载证书，导入“受信任的根证书颁发机构”。
 uv run python launch_browser.py \
   --browser chrome \
   --profile-dir .profiles \
-  --url https://你的前端测试页面
+  --url about:blank
 ```
 
 Edge 将 `--browser chrome` 换成 `--browser edge`。

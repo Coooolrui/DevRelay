@@ -96,9 +96,9 @@ uv run python devrelay_agent.py --no-open
 2. 在“代理控制”中设置代理端口，默认 `8080`。
 3. 点击“启动代理”。
 4. 首次使用时打开证书页并安装 mitmproxy CA 证书。
-5. 启动专用 Chrome 或 Edge。
+5. 按需启动专用 Chrome 或 Edge，浏览器会打开空白页，之后由用户输入目标地址。
 
-第一次打开控制台会自动显示初始化向导，向导也可以从页面顶部重新打开。初始化向导不会替代主控制台，完成后仍可在主界面管理代理、规则和日志。
+第一次打开控制台会自动显示初始化向导，向导也可以从页面顶部重新打开。向导只负责环境、代理和证书就绪，不要求填写目标地址或创建规则；浏览器按需从主控制台启动。
 
 ## HTTPS 证书
 
@@ -131,7 +131,7 @@ Chrome：
 uv run python launch_browser.py \
   --browser chrome \
   --profile-dir .profiles \
-  --url https://你的前端测试页面
+  --url about:blank
 ```
 
 Edge：
@@ -140,7 +140,7 @@ Edge：
 uv run python launch_browser.py \
   --browser edge \
   --profile-dir .profiles \
-  --url https://你的前端测试页面
+  --url about:blank
 ```
 
 启动器会设置：
