@@ -84,9 +84,12 @@ uv run python devrelay_agent.py --no-open
 cd proxy
 uv run mitmdump \
   -p 8080 \
+  --ssl-insecure \
   -s devrelay_proxy.py \
   --set 'devrelay_configs=["configs/default.yml"]'
 ```
+
+`--ssl-insecure` 会跳过代理连接上游 HTTPS 服务时的证书校验，适合自签名或证书链不完整的测试环境；浏览器仍需信任 mitmproxy CA 证书。
 
 看到下面的日志后保持终端运行：
 

@@ -284,11 +284,12 @@ cors:
 ```bash
 uv run mitmdump \
   -p 8080 \
+  --ssl-insecure \
   -s devrelay_proxy.py \
   --set 'devrelay_configs=["configs/default.yml"]'
 ```
 
-看到 `HTTP(S) proxy listening at *:8080` 后保持终端运行。修改 YAML 后，代理会在下一次请求时重新加载；修改 Python 代码后需要重启 mitmproxy。
+`--ssl-insecure` 用于忽略代理连接上游 HTTPS 服务时的证书校验，适合自签名或证书链不完整的测试环境。它不会替代浏览器对 mitmproxy CA 证书的信任。看到 `HTTP(S) proxy listening at *:8080` 后保持终端运行。修改 YAML 后，代理会在下一次请求时重新加载；修改 Python 代码后需要重启 mitmproxy。
 
 ## 常见问题
 

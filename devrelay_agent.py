@@ -297,6 +297,7 @@ class AgentManager:
                 mitmdump,
                 "-p",
                 str(self.proxy_port),
+                "--ssl-insecure",
                 "-s",
                 str(BASE_DIR / "devrelay_proxy.py"),
                 "--set",
