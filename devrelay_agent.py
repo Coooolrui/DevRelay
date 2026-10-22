@@ -123,8 +123,13 @@ class AgentManager:
         )
 
     def _config_path(self, name: str) -> Path:
-        if not isinstance(name, str) or not name or Path(name).name != name:
+        if not isinstance(name, str):
             raise ValueError("配置文件名无效")
+        name = name.strip()
+        if not name or Path(name).name != name:
+            raise ValueError("配置文件名无效")
+        if Path(name).suffix == "":
+            name += ".yml"
         path = self.config_dir / name
         if path.suffix.lower() not in {".yml", ".yaml"}:
             raise ValueError("配置文件必须使用 .yml 或 .yaml 后缀")
@@ -169,7 +174,7 @@ class AgentManager:
         if any(name not in available for name in names):
             raise ValueError("选择的配置文件不存在")
         if self.process is not None and self.process.poll() is None:
-            raise RuntimeError("代理运行中，请先停止代理再修改配置文件选择")
+            raise RuntimeError("代理运行中，不能修改勾选和顺序")
         self.selected_configs = list(dict.fromkeys(names))
         state = self.onboarding()
         state["selectedConfigs"] = self.selected_configs
@@ -193,11 +198,25 @@ class AgentManager:
             raise ConfigError(f"读取配置失败: {exc}") from exc
         return {"name": name, "text": text, "config": parse_config_text(text, source=path)}
 
+    def _proxy_running(self) -> bool:
+        return self.process is not None and self.process.poll() is None
+
+    def _reject_selected_rule_removal(self, name: str, new_rules: list[Any]) -> None:
+        if not self._proxy_running() or name not in self.selected_config_names():
+            return
+        path = self._config_path(name)
+        if not path.exists():
+            return
+        old_rules = load_config(path).get("rules", [])
+        if isinstance(old_rules, list) and len(new_rules) < len(old_rules):
+            raise RuntimeError("代理运行中，已勾选配置里的规则不能删除")
+
     def save_config_file_text(self, name: str, text: str) -> dict[str, Any]:
         if not isinstance(text, str):
             raise ConfigError("配置内容必须是 YAML 文本")
         path = self._config_path(name)
         config = parse_config_text(text, source=path)
+        self._reject_selected_rule_removal(name, config.get("rules", []))
         temporary = path.with_suffix(path.suffix + ".tmp")
         temporary.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
         try:
@@ -217,32 +236,56 @@ class AgentManager:
         return self.save_config_file_text(name, text)
 
     def rename_config_file(self, old_name: str, new_name: str) -> dict[str, Any]:
-        if self.process is not None and self.process.poll() is None:
-            raise RuntimeError("代理运行中，请先停止代理再重命名配置文件")
         old_path = self._config_path(old_name)
         new_path = self._config_path(new_name)
         if not old_path.exists():
             raise ConfigError(f"配置文件不存在: {old_name}")
+        if old_path.resolve() == new_path.resolve():
+            return {
+                "name": old_path.name,
+                "files": self.list_config_files(),
+                "proxyRestarted": False,
+            }
         if new_path.exists():
             raise ValueError(f"配置文件已存在: {new_name}")
         selected = self.selected_config_names()
+        running = self.process is not None and self.process.poll() is None
+        was_selected = old_name in selected
         old_path.rename(new_path)
-        if old_name in selected:
-            selected[selected.index(old_name)] = new_name
+        if was_selected:
+            selected[selected.index(old_name)] = new_path.name
             state = self.onboarding()
             state["selectedConfigs"] = selected
             self._write_state(state)
-        return {"name": new_name, "files": self.list_config_files()}
+        proxy_restarted = False
+        warning = None
+        if running and was_selected:
+            try:
+                self.stop_proxy()
+                self.start_proxy()
+                proxy_restarted = True
+            except Exception as exc:
+                warning = f"文件已重命名，但代理重新加载失败: {exc}"
+        result = {
+            "name": new_path.name,
+            "files": self.list_config_files(),
+            "proxyRestarted": proxy_restarted,
+        }
+        if warning:
+            result["warning"] = warning
+        return result
 
     def delete_config_file(self, name: str) -> dict[str, Any]:
-        if self.process is not None and self.process.poll() is None:
-            raise RuntimeError("代理运行中，请先停止代理再删除配置文件")
+        selected = self.selected_config_names()
+        if self._proxy_running() and name in selected:
+            raise RuntimeError("代理运行中，已勾选的配置不能删除")
         path = self._config_path(name)
         if not path.exists():
             raise ConfigError(f"配置文件不存在: {name}")
         path.unlink()
-        selected = [item for item in self.selected_config_names() if item != name]
-        self.select_configs(selected)
+        if name in selected:
+            selected = [item for item in selected if item != name]
+            return self.select_configs(selected)
         return {"files": self.list_config_files(), "selectedConfigs": selected}
 
     def copy_config_file(self, source_name: str, target_name: str) -> dict[str, Any]:
