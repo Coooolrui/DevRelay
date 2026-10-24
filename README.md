@@ -162,27 +162,105 @@ rules:
   - name: api-to-local
     enabled: true
     match:
-      host: '^api\\.example\\.com$'
-      path: '^/api(?:/|$)'
+      host: '^api\.example\.com$'
+      path: '^/api(?:/|\?|$)'
       method: '^(GET|POST|PUT|PATCH|DELETE|OPTIONS)$'
     target:
       host: localhost
       port: 7890
 ```
 
+这条规则命中 `http://api.example.com/api/v1/users` 和 `http://api.example.com/api?page=1`，转发到 `http://localhost:7890`。`/api` 以外的页面和接口继续访问原服务器。
+
 ### 匹配规则
 
+一条规则先看 `enabled`，再同时比较 `match.host`、`match.path`、`match.method`。三个字段都通过才算命中。某个字段留空或不写，表示这一维不限制。
+
+`enabled: false` 的规则直接跳过。多个配置文件按控制台里的勾选顺序合并，再按文件内的书写顺序查找，第一条命中的规则生效，后面的规则不再看。没有规则命中时，请求按原地址发给测试环境。
+
+命中只看下面三个字符串。请求头、Cookie、请求体、协议和端口都不参与判断。请求头的增删改在命中之后才执行。
+
+| 字段 | 拿来比较的字符串 | 请求 `http://192.0.2.10:8080/dev-api/shop/api/orders/search?pageIndex=1&keyword=demo` |
+| --- | --- | --- |
+| `host` | 主机名或 IP，不含协议、端口、路径 | `192.0.2.10` |
+| `path` | 路径，后面紧跟查询字符串 | `/dev-api/shop/api/orders/search?pageIndex=1&keyword=demo` |
+| `method` | 大写的 HTTP 方法 | `GET` |
+
+三个字段的值都是 Python 正则，用 `re.search` 查找，不是整串相等。
+
+- 不写 `^` 时，模式出现在字符串任意位置都算命中。`path: /api` 会命中 `/dev-api/shop/api/...`。限定前缀时以 `^` 开头。
+- 要求整串一致时，同时写 `^` 和 `$`。
+- `.` 表示任意一个字符。域名和 IP 里的点写成 `\.`，否则 `192.0.2.10` 也能命中 `192a0b2c10`。
+- 区分大小写。方法按浏览器发出的大写字母写，例如 `GET`。
+- YAML 单引号里的反斜杠原样保留。正则需要一个反斜杠时就写一个：`'^api\.example\.com$'`。写成 `'^api\\.example\\.com$'` 时，模式里是两个反斜杠，点号匹配不到。
+
+#### `host`
+
+只写主机名或 IP：
+
 ```yaml
-match:
-  host: '^api\\.example\\.com$'
-  path: '^/api(?:/|$)'
-  method: '^(GET|POST|OPTIONS)$'
+host: '^api\.example\.com$'
+host: '^192\.0\.2\.10$'
 ```
 
-- `host` 只写域名，不写协议和路径。
-- `path` 匹配请求路径，需要时可以把查询字符串纳入正则。
-- `method` 匹配 HTTP 方法。跨域请求需要预检时，必须包含 `OPTIONS`。
-- 规则命中只看域名、路径和方法。Header 改动在命中后执行，不参与命中判断。
+`http://192.0.2.10:8080/...` 的 `host` 是 `192.0.2.10`。把端口、`http://` 或路径写进 `host` 后，这条规则匹配不到。规则也不能按端口区分同一台机器；同一 IP 上的不同服务，用 `path` 分开。
+
+#### `path`
+
+`path` 含查询字符串。前缀规则要同时接住「后面还有路径」「后面是 `?`」「路径到此结束」三种情况：
+
+```yaml
+path: '^/dev-api/shop(?:/|\?|$)'
+```
+
+对 `http://192.0.2.10:8080` 上的请求，这条模式的结果是：
+
+| 实际 `path` | 结果 |
+| --- | --- |
+| `/dev-api/shop/api/orders/search?pageIndex=1&keyword=demo` | 命中 |
+| `/dev-api/shop?status=open` | 命中 |
+| `/dev-api/shop` | 命中 |
+| `/web/orders/detail` | 不命中，页面继续打开测试环境 |
+
+查询参数会随请求原样转发，`keyword` 这类参数不用写进规则。只有要按某个参数决定是否转发时，才把查询字符串写进正则，例如 `pageIndex=`。
+
+下面几种写法匹配不到上面的搜索接口：
+
+- `^/dev-api/shop/(?:/|$)`：`shop` 后面多要求一个斜杠，`/dev-api/shop/api/...` 对不上。
+- `^/dev-api/shop$`：查询字符串还在，字符串没有在 `shop` 处结束。
+- `^/api(?:/|$)`：`/api?page=1` 里 `api` 后面是 `?`，既不是 `/` 也不是结尾；它也覆盖不到 `/dev-api/shop` 这个前缀。
+- `/api`：没有 `^`，`/dev-api/...` 和 `/other/api` 都会命中。
+
+#### `method`
+
+```yaml
+method: '^(GET|POST|PUT|PATCH|DELETE|OPTIONS)$'
+```
+
+浏览器跨域时会先发 `OPTIONS` 预检。规则里没有 `OPTIONS` 时，预检继续去测试环境，本地接口收不到后续请求。页面和接口在同一台主机上时通常没有预检。WebSocket 握手的方法是 `GET`。不写 `method` 时，所有方法都通过这一维。
+
+#### 只把同一页面上的接口转到本地
+
+页面 `http://192.0.2.10:8080/web/orders/detail` 和接口 `http://192.0.2.10:8080/dev-api/shop/api/orders/search?pageIndex=1&keyword=demo` 主机相同。`host` 写成这台机器，`path` 只圈接口前缀，页面仍走测试环境：
+
+```yaml
+rules:
+  - name: shop-api-to-local
+    enabled: true
+    match:
+      host: '^192\.0\.2\.10$'
+      path: '^/dev-api/shop(?:/|\?|$)'
+      method: '^(GET|POST|PUT|PATCH|DELETE|OPTIONS)$'
+    target:
+      host: localhost
+      port: 7890
+    preserveHost: false
+    rewritePath:
+      pattern: '^/dev-api/shop'
+      replacement: ''
+```
+
+搜索接口会转发为 `http://localhost:7890/api/orders/search?pageIndex=1&keyword=demo`。`7890` 改成本地服务实际监听的端口。本地接口本身带 `/dev-api/shop` 前缀时，删掉 `rewritePath`。
 
 ### 本地目标和 Host
 
@@ -303,7 +381,7 @@ uv run mitmdump \
 
 ### 代理没有命中规则
 
-检查配置文件是否勾选并保存选择；`host` 是否只写域名；`path` 和 `method` 是否匹配实际请求；本地服务是否已启动且端口正确。
+检查配置文件是否勾选并保存选择，以及 `host`、`path`、`method` 是否按上一节的实际字符串来写。`host` 只含主机名或 IP；`path` 含查询字符串，前缀要用 `^` 并接住 `/`、`?` 和结尾；跨域预检要包含 `OPTIONS`。本地服务需已启动，且 `target.port` 与它的监听端口一致。
 
 ## 项目结构
 
