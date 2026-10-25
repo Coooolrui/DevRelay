@@ -5,10 +5,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import socket
 import shutil
 import subprocess
 import sys
 import threading
+import time
 import urllib.error
 import urllib.request
 import webbrowser
@@ -31,12 +33,27 @@ UI_FILE = BASE_DIR / "ui" / "index.html"
 
 
 class AgentManager:
+    PROXY_CLIENT_IDLE_TIMEOUT = 86400
+    PROXY_STARTUP_GRACE_SECONDS = 10
+    PROXY_HEALTH_CHECK_INTERVAL = 1
+    PROXY_UNHEALTHY_CHECKS = 3
+    AUTO_RESTART_LIMIT = 3
+    AUTO_RESTART_WINDOW_SECONDS = 300
+
     def __init__(self) -> None:
         self.config_dir = CONFIG_DIR
         self.selected_configs: list[str] = []
         self.state_path = DEFAULT_STATE
         self.proxy_port = 8080
         self.process: subprocess.Popen[str] | None = None
+        self._proxy_monitor_stop: threading.Event | None = None
+        self._proxy_generation = 0
+        self._proxy_started_at = 0.0
+        self._auto_restart_attempts = 0
+        self._auto_restart_window_started = 0.0
+        self._last_exit_code: int | None = None
+        self._last_exit_at: float | None = None
+        self._last_failure: str | None = None
         self.browser_processes: list[subprocess.Popen[Any]] = []
         self.logs: deque[str] = deque(maxlen=300)
         self.lock = threading.RLock()
@@ -201,6 +218,15 @@ class AgentManager:
     def _proxy_running(self) -> bool:
         return self.process is not None and self.process.poll() is None
 
+    def _proxy_listener_ready(self) -> bool:
+        if not self._proxy_running():
+            return False
+        try:
+            with socket.create_connection(("127.0.0.1", self.proxy_port), timeout=0.3):
+                return True
+        except OSError:
+            return False
+
     def _reject_selected_rule_removal(self, name: str, new_rules: list[Any]) -> None:
         if not self._proxy_running() or name not in self.selected_config_names():
             return
@@ -303,11 +329,21 @@ class AgentManager:
     def status(self) -> dict[str, Any]:
         with self.lock:
             running = self.process is not None and self.process.poll() is None
+            listener_ready = self._proxy_listener_ready()
             pid = self.process.pid if running and self.process else None
             selected = self.selected_config_names()
             config = self._read_config()
             return {
                 "running": running,
+                "listenerReady": listener_ready,
+                "health": "ok" if running and listener_ready else "degraded" if running else "stopped",
+                "clientIdleTimeout": self.PROXY_CLIENT_IDLE_TIMEOUT,
+                "proxyDiagnostics": {
+                    "lastExitCode": self._last_exit_code,
+                    "lastExitAt": self._last_exit_at,
+                    "lastFailure": self._last_failure,
+                    "autoRestartAttempts": self._auto_restart_attempts,
+                },
                 "pid": pid,
                 "proxyHost": "127.0.0.1",
                 "proxyPort": self.proxy_port,
@@ -326,52 +362,95 @@ class AgentManager:
             if self.process is not None and self.process.poll() is None:
                 return self.status()
 
-            selected = self.selected_config_names()
-            if not selected:
-                raise RuntimeError("请至少选择一个配置文件后再启动代理")
-            # Validate every selected file before starting mitmproxy so a bad
-            # file cannot leave the user with a half-started proxy process.
-            self.combined_config(selected)
+            return self._start_proxy_locked()
 
-            mitmdump = shutil.which("mitmdump")
-            if not mitmdump:
-                raise RuntimeError("找不到 mitmdump，请先执行 uv sync")
-            command = [
-                mitmdump,
-                "-p",
-                str(self.proxy_port),
-                "--ssl-insecure",
-                "-s",
-                str(BASE_DIR / "devrelay_proxy.py"),
-                "--set",
-                f"devrelay_configs={json.dumps([str(self._config_path(name)) for name in selected], ensure_ascii=False)}",
-            ]
-            self._append_log("启动代理: " + " ".join(command))
-            self.process = subprocess.Popen(
-                command,
-                cwd=BASE_DIR,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                bufsize=1,
-            )
-            threading.Thread(target=self._read_proxy_logs, daemon=True).start()
+    def _start_proxy_locked(self) -> dict[str, Any]:
+        """Start mitmdump and attach log and health monitors.
+
+        The caller must hold ``self.lock``. Keeping process creation here lets
+        the watchdog recover a dead process without racing the public API.
+        """
+        if self.process is not None and self.process.poll() is None:
             return self.status()
+
+        selected = self.selected_config_names()
+        if not selected:
+            raise RuntimeError("请至少选择一个配置文件后再启动代理")
+        # Validate every selected file before starting mitmproxy so a bad
+        # file cannot leave the user with a half-started proxy process.
+        self.combined_config(selected)
+
+        mitmdump = shutil.which("mitmdump")
+        if not mitmdump:
+            raise RuntimeError("找不到 mitmdump，请先执行 uv sync")
+        command = [
+            mitmdump,
+            "-p",
+            str(self.proxy_port),
+            "--ssl-insecure",
+            "-s",
+            str(BASE_DIR / "devrelay_proxy.py"),
+            "--set",
+            f"devrelay_client_idle_timeout={self.PROXY_CLIENT_IDLE_TIMEOUT}",
+            "--set",
+            f"devrelay_configs={json.dumps([str(self._config_path(name)) for name in selected], ensure_ascii=False)}",
+        ]
+        self._append_log("启动代理: " + " ".join(command))
+        process = subprocess.Popen(
+            command,
+            cwd=BASE_DIR,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+        )
+        if self._proxy_monitor_stop is not None:
+            self._proxy_monitor_stop.set()
+        self._proxy_generation += 1
+        generation = self._proxy_generation
+        monitor_stop = threading.Event()
+        self._proxy_monitor_stop = monitor_stop
+        self.process = process
+        self._proxy_started_at = time.monotonic()
+        self._last_failure = None
+        threading.Thread(
+            target=self._read_proxy_logs,
+            args=(process,),
+            daemon=True,
+            name="devrelay-proxy-logs",
+        ).start()
+        threading.Thread(
+            target=self._monitor_proxy,
+            args=(process, generation, monitor_stop),
+            daemon=True,
+            name="devrelay-proxy-watchdog",
+        ).start()
+        return self.status()
 
     def stop_proxy(self) -> dict[str, Any]:
         with self.lock:
-            if self.process is None or self.process.poll() is not None:
+            process = self.process
+            if self._proxy_monitor_stop is not None:
+                self._proxy_monitor_stop.set()
+            self._proxy_generation += 1
+            if process is None or process.poll() is not None:
                 return self.status()
             self._append_log("停止代理")
-            self.process.terminate()
+            process.terminate()
             try:
-                self.process.wait(timeout=5)
+                process.wait(timeout=5)
             except subprocess.TimeoutExpired:
-                self.process.kill()
-                self.process.wait(timeout=5)
+                process.kill()
+                process.wait(timeout=5)
             return self.status()
+
+    def restart_proxy(self) -> dict[str, Any]:
+        with self.lock:
+            self._append_log("重启代理")
+            self.stop_proxy()
+            return self.start_proxy()
 
     def save_config(self, config: dict[str, Any]) -> dict[str, Any]:
         return self.save_config_file_text(self._active_config_name(), dump_config(config))["config"]
@@ -412,13 +491,84 @@ class AgentManager:
         except (ConfigError, ValueError):
             return {"rules": []}
 
-    def _read_proxy_logs(self) -> None:
-        process = self.process
+    def _read_proxy_logs(self, process: subprocess.Popen[str]) -> None:
         if process is None or process.stdout is None:
             return
         for line in process.stdout:
             self._append_log(line.rstrip())
-        self._append_log("代理进程已退出")
+        return_code = process.poll()
+        self._append_log(f"代理进程已退出，退出码: {return_code}")
+
+    def _monitor_proxy(
+        self,
+        process: subprocess.Popen[str],
+        generation: int,
+        stop_event: threading.Event,
+    ) -> None:
+        unhealthy_checks = 0
+        healthy_since = 0.0
+        while not stop_event.wait(self.PROXY_HEALTH_CHECK_INTERVAL):
+            return_code = process.poll()
+            if return_code is not None:
+                with self.lock:
+                    if generation != self._proxy_generation or self.process is not process:
+                        return
+                    self._last_exit_code = return_code
+                    self._last_exit_at = time.time()
+                    self._last_failure = f"代理进程退出，退出码: {return_code}"
+                    self._append_log(self._last_failure)
+                    self._recover_proxy_locked(generation, stop_event)
+                return
+
+            if time.monotonic() - self._proxy_started_at < self.PROXY_STARTUP_GRACE_SECONDS:
+                continue
+            with self.lock:
+                if generation != self._proxy_generation or self.process is not process:
+                    return
+                ready = self._proxy_listener_ready()
+                if ready:
+                    unhealthy_checks = 0
+                    if healthy_since == 0:
+                        healthy_since = time.monotonic()
+                    elif time.monotonic() - healthy_since >= self.AUTO_RESTART_WINDOW_SECONDS:
+                        self._auto_restart_attempts = 0
+                else:
+                    healthy_since = 0
+                    unhealthy_checks += 1
+                    if unhealthy_checks >= self.PROXY_UNHEALTHY_CHECKS:
+                        self._last_failure = "代理进程仍在运行，但监听端口连续不可用"
+                        self._append_log(self._last_failure)
+                        self._recover_proxy_locked(generation, stop_event)
+                        return
+
+    def _recover_proxy_locked(self, generation: int, stop_event: threading.Event) -> None:
+        if generation != self._proxy_generation or self._proxy_monitor_stop is not stop_event:
+            return
+        now = time.monotonic()
+        if now - self._auto_restart_window_started >= self.AUTO_RESTART_WINDOW_SECONDS:
+            self._auto_restart_window_started = now
+            self._auto_restart_attempts = 0
+        if self._auto_restart_attempts >= self.AUTO_RESTART_LIMIT:
+            self._append_log("代理自动恢复已达到重试上限，请检查日志后手动重启")
+            return
+        self._auto_restart_attempts += 1
+        self._append_log(
+            f"代理异常，正在自动恢复 ({self._auto_restart_attempts}/{self.AUTO_RESTART_LIMIT})"
+        )
+        process = self.process
+        stop_event.set()
+        if process is not None and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+        try:
+            self._start_proxy_locked()
+        except (ConfigError, OSError, RuntimeError, ValueError) as exc:
+            self._last_failure = f"代理自动恢复失败: {exc}"
+            self._append_log(self._last_failure)
 
     def _append_log(self, message: str) -> None:
         with self.lock:
@@ -592,6 +742,14 @@ def start_proxy() -> dict[str, Any]:
 @app.post("/api/proxy/stop")
 def stop_proxy() -> dict[str, Any]:
     return manager.stop_proxy()
+
+
+@app.post("/api/proxy/restart")
+def restart_proxy() -> dict[str, Any]:
+    try:
+        return manager.restart_proxy()
+    except (ConfigError, OSError, RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.get("/api/logs")
