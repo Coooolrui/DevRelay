@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from mitmproxy import ctx, http
+from mitmproxy.proxy import server as proxy_server
 
 from rules import ConfigError, capture_rule_values, find_rule, load_config, parse_target
 
@@ -27,8 +28,21 @@ class DevRelayProxy:
             default="[]",
             help="JSON array of DevRelay proxy YAML configuration paths",
         )
+        loader.add_option(
+            name="devrelay_client_idle_timeout",
+            typespec=int,
+            default=86400,
+            help="Seconds before an inactive client connection is closed",
+        )
 
     def configure(self, updated: set[str]) -> None:
+        if "devrelay_client_idle_timeout" in updated:
+            timeout = ctx.options.devrelay_client_idle_timeout
+            if not isinstance(timeout, int) or timeout < 60:
+                raise ValueError("devrelay_client_idle_timeout must be at least 60 seconds")
+            # mitmproxy currently keeps this client timeout as a module constant.
+            # Set it through our own option so the project does not patch .venv files.
+            proxy_server.TCP_TIMEOUT = timeout
         if "devrelay_configs" in updated:
             try:
                 values = json.loads(ctx.options.devrelay_configs)
@@ -39,6 +53,38 @@ class DevRelayProxy:
                 ctx.log.error(f"配置文件列表无效: {exc}")
                 self.config_paths = []
             self._reload_config(force=True)
+
+    @staticmethod
+    def _connection_label(connection: Any) -> str:
+        peername = getattr(connection, "peername", None)
+        return str(peername or getattr(connection, "id", "unknown"))
+
+    def client_connected(self, client: Any) -> None:
+        ctx.log.info(f"client connected: {self._connection_label(client)}")
+
+    def client_disconnected(self, client: Any) -> None:
+        ctx.log.info(f"client disconnected: {self._connection_label(client)}")
+
+    def server_connect(self, data: Any) -> None:
+        server = getattr(data, "server", None)
+        ctx.log.info(f"upstream connecting: {self._connection_label(server)}")
+
+    def server_connected(self, data: Any) -> None:
+        server = getattr(data, "server", None)
+        ctx.log.info(f"upstream connected: {self._connection_label(server)}")
+
+    def server_disconnected(self, data: Any) -> None:
+        server = getattr(data, "server", None)
+        ctx.log.info(f"upstream disconnected: {self._connection_label(server)}")
+
+    def server_connect_error(self, data: Any) -> None:
+        server = getattr(data, "server", None)
+        error = getattr(data, "error", "unknown error")
+        ctx.log.error(f"upstream connect error: {self._connection_label(server)}: {error}")
+
+    def error(self, flow: http.HTTPFlow) -> None:
+        if flow.error:
+            ctx.log.error(f"flow error: {flow.error.msg}")
 
     def request(self, flow: http.HTTPFlow) -> None:
         self._reload_config()
